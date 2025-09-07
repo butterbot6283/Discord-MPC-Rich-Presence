@@ -4,7 +4,8 @@ I can't code and english isn't my native, this script created with AI I only do 
 
 A Node.js script to display your **Media Player Classic (MPC-HC)** playback status as a Discord Rich Presence, with support for custom images, metadata, and episode titles. This script enhances your Discord profile by showing what you're watching, including video titles, playback state, and posters.
 
-<img width="271" height="104" alt="{3A0F5109-15E2-4AFD-8C52-C0B461538D8B}" src="https://github.com/user-attachments/assets/65b81ec0-b911-4dff-8fe0-c772502ca4d2" /> <img width="268" height="100" alt="{29410F2D-8CCC-4494-A03B-A93EF9216768}" src="https://github.com/user-attachments/assets/6ea88589-e3ea-4d63-af28-af44a49015ea" /> <img width="267" height="102" alt="{48A0615D-5B89-44C7-8BDD-2743B5815DD8}" src="https://github.com/user-attachments/assets/fd3fe207-8964-4d8e-ac32-74eca9991008" />
+<img width="271" height="104" alt="{3A0F5109-15E2-4AFD-8C52-C0B461538D8B}" src="https://github.com/user-attachments/assets/65b81ec0-b911-4dff-8fe0-c772502ca4d2" /> <img width="268" height="100" alt="{29410F2D-8CCC-4494-A03B-A93EF9216768}" src="https://github.com/user-attachments/assets/6ea88589-e3ea-4d63-af28-af44a49015ea" /> <img width="267" height="102" alt="{48A0615D-5B89-44C7-8BDD-2743B5815DD8}" src="https://github.com/user-attachments/assets/fd3fe207-8964-4d8e-ac32-74eca9991008" /> <img width="267" height="98" alt="{70CBDEBE-009F-462F-8E59-281CFDA839C5}" src="https://github.com/user-attachments/assets/adbd535c-ff58-4d10-9b13-5db658b84139" />
+
 
 
 

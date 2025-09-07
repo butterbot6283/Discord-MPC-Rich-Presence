@@ -355,7 +355,7 @@ async function updatePresence() {
                 ? (config.customText && config.customText.trim() ? config.customText 
                   : (fetchedEpisodeTitle ? fetchedEpisodeTitle 
                     : (mpcStatus.title && !mpcStatus.title.match(/\[.*?\]/) && !mpcStatus.isFallback ? mpcStatus.title
-                      : getFallbackName(mpcStatus.fileName))))
+                      : (isUsingConfigId ? mpcStatus.fileName : getFallbackName(mpcStatus.fileName)))))
                 : `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
             console.log(`stateText set to: "${stateText}"`);
 

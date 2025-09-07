@@ -3,6 +3,11 @@
 
 A Node.js script to display your **Media Player Classic (MPC-HC)** playback status as a Discord Rich Presence, with support for custom images, metadata, and episode titles. This script enhances your Discord profile by showing what you're watching, including video titles, playback state, and posters.
 
+<img width="297" height="359" alt="{606CFE93-C570-484A-BFED-CCBC885A1B6D}" src="https://github.com/user-attachments/assets/b74a1d83-5a90-4dfe-8f7f-91587a1a257d" /> <img width="303" height="361" alt="{E9EECE20-ACF4-44AF-96D4-C51A80631E17}" src="https://github.com/user-attachments/assets/2c00e678-a328-4558-8dd4-aa30fb5ebf7c" /> <img width="297" height="346" alt="{506918B7-899E-4463-9247-941E9C15CCB7}" src="https://github.com/user-attachments/assets/e9565ae8-8caa-48f8-82a5-857b214500a3" />
+
+
+
+
 ## Features
 
 - **Dynamic Rich Presence**: Displays the current video's title, playback status (Playing/Paused), and timestamps on Discord.

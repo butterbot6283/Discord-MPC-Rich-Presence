@@ -1,9 +1,11 @@
+I can't code and english isn't my native, this script created with AI I only do testing and prompting. If you somehow find this repo, please figure it out yourself how to use it, I cant answer or speak english and this readme below is created by AI aswell. Thats all from me, hope this readme created by AI is easy to understand.
 
 # MPC Discord Presence
 
 A Node.js script to display your **Media Player Classic (MPC-HC)** playback status as a Discord Rich Presence, with support for custom images, metadata, and episode titles. This script enhances your Discord profile by showing what you're watching, including video titles, playback state, and posters.
 
-<img width="297" height="359" alt="{606CFE93-C570-484A-BFED-CCBC885A1B6D}" src="https://github.com/user-attachments/assets/b74a1d83-5a90-4dfe-8f7f-91587a1a257d" /> <img width="303" height="361" alt="{E9EECE20-ACF4-44AF-96D4-C51A80631E17}" src="https://github.com/user-attachments/assets/2c00e678-a328-4558-8dd4-aa30fb5ebf7c" /> <img width="297" height="346" alt="{506918B7-899E-4463-9247-941E9C15CCB7}" src="https://github.com/user-attachments/assets/e9565ae8-8caa-48f8-82a5-857b214500a3" />
+<img width="271" height="104" alt="{3A0F5109-15E2-4AFD-8C52-C0B461538D8B}" src="https://github.com/user-attachments/assets/65b81ec0-b911-4dff-8fe0-c772502ca4d2" /> <img width="268" height="100" alt="{29410F2D-8CCC-4494-A03B-A93EF9216768}" src="https://github.com/user-attachments/assets/6ea88589-e3ea-4d63-af28-af44a49015ea" /> <img width="267" height="102" alt="{48A0615D-5B89-44C7-8BDD-2743B5815DD8}" src="https://github.com/user-attachments/assets/fd3fe207-8964-4d8e-ac32-74eca9991008" />
+
 
 
 
@@ -20,9 +22,8 @@ A Node.js script to display your **Media Player Classic (MPC-HC)** playback stat
 - **Poster Fetching**: Automatically fetches posters from OMDb (IMDb) or Jikan (MyAnimeList) based on metadata or filename.
 - **Fallback Mechanism**: Gracefully handles videos without metadata or titles, displaying file extensions (e.g., "MKV Video") or default text ("MPC-HC").
 - **Interactive Menu**: Includes a CLI menu (`menu.js`) to start/stop the script, edit config, and manage settings.
-- **Efficient Caching**: Only fetches metadata, titles, and posters when the file changes or config is updated, reducing API calls.
 - **PM2 Integration**: Runs as a background process with `pm2` for reliable execution.
-- **Windows Support**: Includes `.bat` and `.vbs` scripts for easy execution via double-click.
+- **Windows Support**: Includes `.bat` scripts for easy execution via double-click.
 
 ## Requirements
 
@@ -39,12 +40,12 @@ A Node.js script to display your **Media Player Classic (MPC-HC)** playback stat
 
 ## Installation
 
-1. **Clone the Repository**:
+1. **Clone or Download the Repository**:
    ```bash
-   git clone https://github.com/your-username/mpc-discord-presence.git
-   cd mpc-discord-presence
+   git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
+   cd Discord-MPC-Rich-Presence
    ```
-
+   
 2. **Install Dependencies**:
    ```bash
    npm install
@@ -160,9 +161,6 @@ To display episode-specific titles and release dates:
 - **Poster Fetching**:
   - Prioritizes metadata IDs (IMDb/MAL), then config IDs, then filename-based search (if `autoPoster` is enabled).
   - Uses OMDb for movies and Jikan for anime.
-- **Caching**:
-  - Metadata, titles, and posters are cached to avoid redundant API calls or file parsing.
-  - Cache is cleared when the file changes, config is updated, or playback stops.
 - **Error Handling**:
   - Gracefully handles missing metadata, titles, or API failures with fallback values.
   - Logs detailed errors for debugging.
@@ -181,14 +179,11 @@ To display episode-specific titles and release dates:
   - **No Rich Presence**: Ensure Discord is running and MPC-HC web interface is enabled.
   - **API Errors**: Verify OMDb API key or check Jikan rate limits.
   - **Incorrect Titles**: Ensure `titles.txt` format is correct (`episode_number|title|release_date`).
+- **Things I wanted to add but couldn’t**:
+  - using statusDisplayType: 0 and name: (when statusDisplayType is 0, it uses the name from the client ID)
 
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Commit changes (`git commit -m 'Add your feature'`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a pull request.
+### ~~Contributing~~
+~~Contributions are welcome! Fork the repository, make changes, and submit a pull request. For feature requests or bugs, open an issue on GitHub.~~
 
 ## License
 

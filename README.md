@@ -64,7 +64,7 @@ A Node.js script to display your **Media Player Classic (MPC-HC)** playback stat
 
 ### Option 1: Using the Interactive Menu
 1. Run the menu script:
-   - Double-click `run_menu.bat` or `run_menu.vbs` (Windows).
+   - Double-click `menu.bat`.
    - Or use the command line:
      ```bash
      node --no-warnings menu.js

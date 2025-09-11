@@ -3,6 +3,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
 const fetchPoster = require('./poster');
 const { fetchTitles } = require('./titles');
+const fs = require('fs').promises;
 let config = require('./config');
 
 // Fungsi untuk mendapatkan custom ID dari config
@@ -98,64 +99,9 @@ const getFallbackName = (filePath) => {
     return `${extension} Video`;
 };
 
-// Fungsi untuk mendapatkan nama film dari file menggunakan ffmpeg
-const getMovieName = async (filePath, fallbackFileName) => {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                console.error('Error getting movie name:', err);
-                return resolve(cleanName(fallbackFileName));
-            }
-
-            const track = metadata.format;
-            if (config.customText && config.customText.trim()) {
-                return resolve(config.customText);
-            }
-
-            if (track && track.tags && track.tags.title) {
-                const title = track.tags.title;
-                if (title.length > 128) {
-                    if (config.customText && config.customText.trim()) {
-                        return resolve(config.customText);
-                    }
-                    return resolve(cleanName(fallbackFileName));
-                }
-                return resolve(title);
-            }
-
-            return resolve(cleanName(fallbackFileName));
-        });
-    });
-};
-
-// Fungsi untuk mendapatkan ID (IMDb atau MAL) dari metadata file video
-const getIds = (filePath) => {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                reject('Error fetching metadata: ' + err);
-            } else {
-                const imdbID = metadata.format.tags['IMDB_ID'] || null;
-                const malID = metadata.format.tags['MAL_ID'] || null;
-                resolve({ imdbID, malID });
-            }
-        });
-    });
-};
-
-// Fungsi untuk mendapatkan tanggal rilis dari metadata file video
-const getReleaseDate = (filePath) => {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                reject('Error fetching metadata: ' + err);
-            } else {
-                const releaseDate = metadata.format.tags['DATE_RELEASED'] || null;
-                resolve(releaseDate);
-            }
-        });
-    });
-};
+// Variabel cache untuk metadata dari ffprobe
+let lastFilePath = null;
+let cachedMetadata = null; // { metaTitle, imdbID, malID, releaseDate, isError }
 
 // Variabel untuk menyimpan indeks gambar saat ini
 let currentImageIndex = 0;
@@ -214,12 +160,50 @@ const getMpcStatus = async () => {
         let movieName = null;
         let isFallback = false;
         let isUsingConfigId = false; // Flag untuk cek apakah menggunakan ID dari config
+
         if (filePath) {
-            ids = await getIds(filePath);
-            releaseDate = await getReleaseDate(filePath);
-            movieName = await getMovieName(filePath, fileName);
-            // Cek apakah movieName adalah hasil fallback (tanpa customText)
-            isFallback = movieName === cleanName(fileName) && !(config.customText && config.customText.trim());
+            if (filePath !== lastFilePath || !cachedMetadata) {
+                await new Promise((resolve, reject) => {
+                    ffmpeg.ffprobe(filePath, (err, metadata) => {
+                        if (err) {
+                            console.error('Error fetching metadata:', err);
+                            cachedMetadata = { isError: true };
+                            lastFilePath = filePath;
+                            resolve();
+                            return;
+                        }
+
+                        const tags = metadata.format.tags || {};
+                        cachedMetadata = {
+                            metaTitle: tags.title,
+                            imdbID: tags.IMDB_ID || null,
+                            malID: tags.MAL_ID || null,
+                            releaseDate: tags.DATE_RELEASED || null,
+                            isError: false
+                        };
+                        lastFilePath = filePath;
+                        resolve();
+                    });
+                });
+            }
+
+            if (cachedMetadata && !cachedMetadata.isError) {
+                const metaTitle = cachedMetadata.metaTitle;
+                releaseDate = cachedMetadata.releaseDate;
+                ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
+
+                if (config.customText && config.customText.trim()) {
+                    movieName = config.customText;
+                } else if (metaTitle && metaTitle.length <= 128) {
+                    movieName = metaTitle;
+                } else {
+                    movieName = cleanName(fileName);
+                    isFallback = true;
+                }
+            } else {
+                movieName = cleanName(fileName);
+                isFallback = true;
+            }
             // Cek apakah akan menggunakan ID dari config
             isUsingConfigId = (!ids.imdbID && config.imdb_id) || (!ids.malID && config.mal_id);
         } else {
@@ -266,6 +250,23 @@ const getMpcStatus = async () => {
 
 let previousStatus = null;
 
+// Cache variables for fetchPoster
+let cachedPoster = null;
+let cachedShowTitle = null;
+let lastFetchedFileName = null;
+let cachedIsUsingConfigId = false;
+let lastImdbId = null;
+let lastMalId = null;
+let lastConfigImdbId = null;
+let lastConfigMalId = null;
+let lastAutoPoster = config.autoPoster;
+
+// Cache variables for fetchTitles
+let lastFetchedTitlesFileName = null;
+let cachedFetchedTitles = null; // { episodeTitle, releaseDate }
+let lastTitlesMtime = null; // Cache untuk timestamp modifikasi titles.txt
+let lastTitlesSeasonMtime = null; // Cache untuk timestamp modifikasi titles_sX.txt
+
 // Fungsi untuk memperbarui status Discord Rich Presence
 async function updatePresence() {
     const mpcStatus = await getMpcStatus();
@@ -294,39 +295,92 @@ async function updatePresence() {
 		
 		// CHANGED: Gunakan fetchTitles untuk mendapatkan episodeTitle dan releaseDate
         let episodeTitle = mpcStatus.title; // Prioritas 1: dari metadata
-        let releaseDate = mpcStatus.releaseDate || '';
-        const { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate } = await fetchTitles(mpcStatus.fileName);
-        if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
-            episodeTitle = fetchedEpisodeTitle; // Prioritas 2: dari titles.txt
-            releaseDate = fetchedReleaseDate;
-        }
+		let releaseDate = mpcStatus.releaseDate || '';
+		// Cek perubahan file titles.txt dan titles_sX.txt
+		let needsFetchTitles = mpcStatus.fileName !== lastFetchedTitlesFileName;
+		let titlesFileChanged = false;
+		try {
+			const titlesFile = 'titles.txt';
+			const seasonMatch = mpcStatus.fileName.match(/S(\d{1,2})/i);
+			const seasonFile = seasonMatch ? `titles_s${seasonMatch[1]}.txt` : null;
 
-        // Panggil fetchPoster untuk showTitle jika ada ID
-        if (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id) {
-            const titleForSearch = cleanName(mpcStatus.fileName);
-            const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
-            if (fetchedTitle) {
-                showTitle = fetchedTitle;
-                console.log(`Set showTitle from fetchPoster: "${showTitle}"`);
-            }
-            if (!customImageURL) {
-                largeImageKey = poster || largeImageKey;
-                if (!poster) console.log('Fallback to default image: No poster found from OMDb or Jikan.');
-            }
-            isUsingConfigId = usedConfigId;
-        } else if (config.autoPoster) {
-            const titleForSearch = cleanName(mpcStatus.fileName);
-            const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(null, null, titleForSearch);
-            if (fetchedTitle) {
-                showTitle = fetchedTitle;
-                console.log(`Set showTitle from fetchPoster (autoPoster): "${showTitle}"`);
-            }
-            if (!customImageURL) {
-                largeImageKey = poster || largeImageKey;
-                if (!poster) console.log('Fallback to default image: No poster found from OMDb or Jikan.');
-            }
-            isUsingConfigId = usedConfigId;
-        } else {
+			const titlesStat = await fs.stat(titlesFile).catch(() => null);
+			const titlesMtime = titlesStat ? titlesStat.mtimeMs : null;
+			const seasonStat = seasonFile ? await fs.stat(seasonFile).catch(() => null) : null;
+			const seasonMtime = seasonStat ? seasonStat.mtimeMs : null;
+
+			if (titlesMtime !== lastTitlesMtime || seasonMtime !== lastTitlesSeasonMtime) {
+				titlesFileChanged = true;
+				lastTitlesMtime = titlesMtime;
+				lastTitlesSeasonMtime = seasonMtime;
+				console.log(`Titles file changed: titles.txt mtime=${titlesMtime}, titles_sX.txt mtime=${seasonMtime}`);
+			}
+		} catch (err) {
+			console.error('Error checking titles file modification:', err);
+		}
+
+		if (needsFetchTitles || titlesFileChanged) {
+			const titles = await fetchTitles(mpcStatus.fileName);
+			fetchedEpisodeTitle = titles.episodeTitle;
+			fetchedReleaseDate = titles.releaseDate;
+			cachedFetchedTitles = { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate };
+			lastFetchedTitlesFileName = mpcStatus.fileName;
+			console.log(`Updated titles cache: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
+		} else if (cachedFetchedTitles) {
+			fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
+			fetchedReleaseDate = cachedFetchedTitles.releaseDate;
+			console.log(`Using cached titles: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
+		}
+		if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
+			episodeTitle = fetchedEpisodeTitle; // Prioritas 2: dari titles.txt
+			releaseDate = fetchedReleaseDate || releaseDate;
+		}
+
+        // Logic caching untuk fetchPoster
+        const needsFetch = 
+			mpcStatus.fileName !== lastFetchedFileName ||
+			mpcStatus.imdbID !== lastImdbId ||
+			mpcStatus.malID !== lastMalId ||
+			config.imdb_id !== lastConfigImdbId ||
+			config.mal_id !== lastConfigMalId ||
+			config.autoPoster !== lastAutoPoster;
+
+		if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
+			const titleForSearch = cleanName(mpcStatus.fileName);
+			const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
+			if (fetchedTitle) {
+				showTitle = fetchedTitle;
+				console.log(`Set showTitle from fetchPoster: "${showTitle}"`);
+			}
+			if (!customImageURL) {
+				largeImageKey = poster || largeImageKey;
+				if (!poster) console.log('Fallback to default image: No poster found from OMDb or Jikan.');
+			}
+			isUsingConfigId = usedConfigId;
+
+			// Update cache
+			cachedPoster = poster;
+			cachedShowTitle = fetchedTitle;
+			cachedIsUsingConfigId = usedConfigId; // Simpan isUsingConfigId ke cache
+			lastFetchedFileName = mpcStatus.fileName;
+			lastImdbId = mpcStatus.imdbID;
+			lastMalId = mpcStatus.malID;
+			lastConfigImdbId = config.imdb_id;
+			lastConfigMalId = config.mal_id;
+			lastAutoPoster = config.autoPoster;
+		} else if (!needsFetch) {
+			// Gunakan cache jika tidak perlu fetch ulang
+			if (cachedShowTitle) {
+				showTitle = cachedShowTitle;
+				console.log(`Using cached showTitle: "${showTitle}"`);
+			}
+			if (!customImageURL && cachedPoster) {
+				largeImageKey = cachedPoster;
+				console.log(`Using cached poster: "${largeImageKey}"`);
+			}
+			isUsingConfigId = cachedIsUsingConfigId; // Gunakan cached isUsingConfigId
+			console.log(`Using cached isUsingConfigId: ${isUsingConfigId}`);
+		} else {
             console.log(`No IMDb or MAL ID found in video or config, and autoPoster is disabled. Using default title: "${showTitle}"`);
         }
 
@@ -372,16 +426,13 @@ async function updatePresence() {
             const endTimestamp = mpcStatus.isPlaying ? startTimestamp + (mpcStatus.duration * 1000) : startTimestamp + (mpcStatus.position * 1000);
 
             let detailsText = mpcStatus.fileName;
-			if ((mpcStatus.title.toLowerCase().startsWith('episode') || /^S\d{2}E\d{2}/i.test(mpcStatus.title)) && showTitle) {
+			if (showTitle && (isUsingConfigId || mpcStatus.title.toLowerCase().startsWith('episode') || /^S\d{2}E\d{2}/i.test(mpcStatus.title))) {
 				detailsText = showTitle;
-				console.log(`Using show title from API for details: "${showTitle}"`);
-			} else if (isUsingConfigId && showTitle) {
-				detailsText = showTitle;
-				console.log(`Using show title from API (config ID) for details: "${showTitle}"`);
+				console.log(`Using show title from API for details: "${showTitle}" (isUsingConfigId: ${isUsingConfigId})`);
 			}
 
             const activityPayload = {
-                name: 'Your Mom', // ga kepake, kalo statustype 0 masih pake nama dari clientId
+                name: 'Unused', // ga kepake, kalo statustype 0 masih pake nama dari clientId
                 details: detailsText,
                 state: stateText,
                 startTimestamp: startTimestamp,

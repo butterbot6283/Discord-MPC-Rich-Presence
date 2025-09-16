@@ -1,9 +1,9 @@
 const RPC = require('@xhayper/discord-rpc');
 const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
-const fetchPoster = require('./poster');
-const { fetchTitles } = require('./titles');
-const fs = require('fs').promises;
+const fetchPoster = require('./poster2');
+const fetchTitles = require('./titles');
+const path = require('path');
 let config = require('./config');
 
 // Fungsi untuk mendapatkan custom ID dari config
@@ -51,29 +51,7 @@ const switchClientId = async (newClientId) => {
     }
 };
 
-// Fungsi untuk membersihkan teks dalam kurung siku [ ] dari nama file
-function cleanName(name, isMovieName = false) {
-    let cleanedName = name;
-
-    if (!isMovieName) {
-        cleanedName = cleanedName
-            .replace(/\[.*?\]/g, '')   // Hapus [tags]
-            .replace(/\b(720p|1080p|480p|BluRay|BRRip|Webrip|WEB-DL|WEBDL|HDRip|x264|x265|HEVC|HDTV|DVDRip|AAC)\b\s*/gi, '')  // Hapus resolusi dan tipe rip
-            //.replace(/\b(S\d{1,2}E\d{1,2}|Episode \d{1,2}|E\d{1,2})\b/gi, '')  // Hapus episode tags [jangan hapus]
-            //.replace(/\(.*?\)/g, '')   // Hapus (Dual Audio...) [jangan hapus]
-            .replace(/\.{2,}/g, '.')
-            .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1');
-    }
-
-    cleanedName = cleanedName
-        //.replace(/[\._\-]/g, ' ')		//jangan hapus
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-
-    console.log(`Cleaned name: ${cleanedName}`);
-    return cleanedName;
-}
-
+//config reload
 const reloadConfig = () => {
     delete require.cache[require.resolve('./config')];
     const newConfig = require('./config');
@@ -91,6 +69,41 @@ const reloadConfig = () => {
 };
 
 setInterval(reloadConfig, 15000);
+
+// Fungsi untuk membersihkan teks dalam kurung siku [ ] dari nama file
+function cleanName(name, isMovieName = false) {
+    let cleanedName = name;
+
+    if (!isMovieName && config.cleanFilename !== false) { // Periksa cleanFilename
+        // Regex default
+        cleanedName = cleanedName
+            .replace(/\[.*?\]/g, '')   // Hapus [tags]
+            .replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
+            .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1'); // Hilangkan spasi sebelum ekstensi
+
+        // Terapkan regex kustom dari config.cleanRegex
+        if (Array.isArray(config.cleanRegex) && config.cleanRegex.length > 0) {
+            config.cleanRegex.forEach(regex => {
+                try {
+                    const re = new RegExp(regex, 'gi');
+                    cleanedName = cleanedName.replace(re, '');
+                    console.log(`Applied custom regex "${regex}" to clean name: ${cleanedName}`);
+                } catch (err) {
+                    console.error(`Invalid regex in cleanRegex: "${regex}"`, err);
+                }
+            });
+        }
+    }
+
+    cleanedName = cleanedName
+        //.replace(/[\._\-]/g, ' ') // Ganti titik, underscore, dan tanda hubung dengan spasi [nonaktif]
+        //.replace(/\(.*?\)/g, '') // Hapus teks dalam kurung biasa [nonaktif]
+        .replace(/\s{2,}/g, ' ') // Ganti spasi ganda dengan satu spasi
+        .trim();
+
+    console.log(`Cleaned name: ${cleanedName}`);
+    return cleanedName;
+}
 
 // Fungsi untuk mendapatkan nama fallback berdasarkan ekstensi file
 const getFallbackName = (filePath) => {
@@ -154,6 +167,7 @@ const getMpcStatus = async () => {
 
         const filePathMatch = data.match(/<p id="filepath">(.+?)<\/p>/);
         const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
+		console.log(`Extracted filePath: ${filePath}`);
 
         let ids = { imdbID: null, malID: null };
         let releaseDate = null;
@@ -240,6 +254,7 @@ const getMpcStatus = async () => {
             malID: ids.malID,
             releaseDate,
             isFallback,
+			filePath,
             isUsingConfigId // Kembalikan flag
         };
     } catch (error) {
@@ -266,6 +281,24 @@ let lastFetchedTitlesFileName = null;
 let cachedFetchedTitles = null; // { episodeTitle, releaseDate }
 let lastTitlesMtime = null; // Cache untuk timestamp modifikasi titles.txt
 let lastTitlesSeasonMtime = null; // Cache untuk timestamp modifikasi titles_sX.txt
+
+// Fungsi reset semua cache
+const resetAllCaches = () => {
+    cachedMetadata = null;
+    lastFilePath = null;
+    cachedFetchedTitles = null;
+    lastFetchedTitlesFileName = null;
+    cachedPoster = null;
+    cachedShowTitle = null;
+    cachedIsUsingConfigId = false;
+    lastFetchedFileName = null;
+    lastImdbId = null;
+    lastMalId = null;
+    lastConfigImdbId = null;
+    lastConfigMalId = null;
+    lastAutoPoster = null;
+    console.log('All caches reset due to MPC not found or closed.');
+};
 
 // Fungsi untuk memperbarui status Discord Rich Presence
 async function updatePresence() {
@@ -296,31 +329,9 @@ async function updatePresence() {
 		// CHANGED: Gunakan fetchTitles untuk mendapatkan episodeTitle dan releaseDate
         let episodeTitle = mpcStatus.title; // Prioritas 1: dari metadata
 		let releaseDate = mpcStatus.releaseDate || '';
-		// Cek perubahan file titles.txt dan titles_sX.txt
 		let needsFetchTitles = mpcStatus.fileName !== lastFetchedTitlesFileName;
-		let titlesFileChanged = false;
-		try {
-			const titlesFile = 'titles.txt';
-			const seasonMatch = mpcStatus.fileName.match(/S(\d{1,2})/i);
-			const seasonFile = seasonMatch ? `titles_s${seasonMatch[1]}.txt` : null;
-
-			const titlesStat = await fs.stat(titlesFile).catch(() => null);
-			const titlesMtime = titlesStat ? titlesStat.mtimeMs : null;
-			const seasonStat = seasonFile ? await fs.stat(seasonFile).catch(() => null) : null;
-			const seasonMtime = seasonStat ? seasonStat.mtimeMs : null;
-
-			if (titlesMtime !== lastTitlesMtime || seasonMtime !== lastTitlesSeasonMtime) {
-				titlesFileChanged = true;
-				lastTitlesMtime = titlesMtime;
-				lastTitlesSeasonMtime = seasonMtime;
-				console.log(`Titles file changed: titles.txt mtime=${titlesMtime}, titles_sX.txt mtime=${seasonMtime}`);
-			}
-		} catch (err) {
-			console.error('Error checking titles file modification:', err);
-		}
-
-		if (needsFetchTitles || titlesFileChanged) {
-			const titles = await fetchTitles(mpcStatus.fileName);
+		if (needsFetchTitles) {
+			const titles = await fetchTitles(mpcStatus.fileName, mpcStatus.filePath || null);
 			fetchedEpisodeTitle = titles.episodeTitle;
 			fetchedReleaseDate = titles.releaseDate;
 			cachedFetchedTitles = { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate };
@@ -459,6 +470,7 @@ async function updatePresence() {
         } catch (err) {
             console.error('Error clearing activity:', err);
         }
+		resetAllCaches();
     }
 }
 
@@ -484,7 +496,7 @@ function convertTimeToSeconds(time) {
 // Koneksi ke Discord saat pertama kali
 client.on('ready', () => {
     console.log(`Connected to Discord with clientId: ${currentClientId}`);
-    setInterval(updatePresence, 15000); // Update setiap 15 detik
+    setInterval(updatePresence, 5000); // Update setiap 15 detik
 });
 
 client.on('disconnected', () => {

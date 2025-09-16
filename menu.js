@@ -41,7 +41,9 @@ function readConfig() {
             let value = match[2].trim();
             let comment = match[4] || '';
 
-            if (key === 'customImage' && value.startsWith('[')) {
+            if (key === 'customType') return; // Skip customType from output
+
+            if ((key === 'customImage' || key === 'cleanRegex') && value.startsWith('[')) {
                 inArray = true;
                 currentKey = key;
                 arrayValues = [];
@@ -153,7 +155,7 @@ function editConfig(key, newValue, index = null) {
             const currentKey = match[1];
             let currentValue = match[2].trim();
             let comment = match[4] || '';
-            if (currentKey === key && currentValue.startsWith('[')) {
+            if ((key === 'customImage' || key === 'cleanRegex') && currentKey === key && currentValue.startsWith('[')) {
                 inArray = true;
                 arrayStart = i;
                 let arrayLines = [lines[i]];
@@ -164,53 +166,52 @@ function editConfig(key, newValue, index = null) {
                 }
                 arrayLines.push(lines[i]);
 
-                if (key === 'customImage' && index !== null) {
-                    let values = [];
-                    for (let al of arrayLines.slice(1, -1)) {
-                        let v = al.trim().replace(/,$/, '');
-                        if (v || v === '') {
-                            v = v.startsWith("'") && v.endsWith("'") ? v.slice(1, -1) : v;
-                            values.push(v);
-                        }
+                let values = [];
+                for (let al of arrayLines.slice(1, -1)) {
+                    let v = al.trim().replace(/,$/, '');
+                    if (v || v === '') {
+                        v = v.startsWith("'") && v.endsWith("'") ? v.slice(1, -1) : v;
+                        values.push(v);
                     }
-
-                    if (index === 'add') {
-                        values.push(newValue);
-                    } else if (index === 'delete' && 0 <= parseInt(newValue) < values.length) {
-                        values.splice(parseInt(newValue), 1);
-                    } else if (0 <= index < values.length) {
-                        values[index] = newValue;
-                    }
-
-                    arrayLines = [`    ${key}: [ //replace MPC logo with custom images`];
-                    values.forEach((v, idx) => {
-                        arrayLines.push(`        '${v}'${idx < values.length - 1 ? ',' : ''}`);
-                    });
-                    arrayLines.push('    ],');
-                    lines = [...lines.slice(0, arrayStart), ...arrayLines, ...lines.slice(i + 1)];
-                    found = true;
                 }
 
+                if (index === 'add') {
+                    values.push(newValue);
+                } else if (index === 'delete' && 0 <= parseInt(newValue) < values.length) {
+                    values.splice(parseInt(newValue), 1);
+                } else if (0 <= index < values.length) {
+                    values[index] = newValue;
+                }
+
+                arrayLines = [`    ${key}: [ //${comment.replace('//', '').trim()}`];
+                values.forEach((v, idx) => {
+                    arrayLines.push(`        '${v}'${idx < values.length - 1 ? ',' : ''}`);
+                });
+                arrayLines.push('    ],');
+                lines = [...lines.slice(0, arrayStart), ...arrayLines, ...lines.slice(i + 1)];
+                found = true;
+
             } else if (match && currentKey === key) {
-                if (key === 'useCustomId' || key === 'autoPoster') {
+                if (key === 'useCustomId' || key === 'autoPoster' || key === 'cleanFilename') {
                     newValue = newValue.toLowerCase();
                     if (!['true', 'false'].includes(newValue)) {
                         console.log(`Value for ${key} must be true or false!`);
                         return;
                     }
+                    lines[i] = `    ${key}: ${newValue}, ${comment}`;
                 } else {
                     if (!newValue.startsWith("'") || !newValue.endsWith("'")) {
                         newValue = `'${newValue}'`;
                     }
+                    lines[i] = `    ${key}: ${newValue}, ${comment}`;
                 }
-                lines[i] = `    ${key}: ${newValue}, ${comment}`;
                 found = true;
                 break;
             }
         }
     }
 
-    if (!found && key !== 'customImage') {
+    if (!found && key !== 'customImage' && key !== 'cleanRegex') {
         lines.splice(lines.length - 1, 0, `    ${key}: ${newValue}, //new entry`);
     }
 
@@ -221,8 +222,16 @@ function editConfig(key, newValue, index = null) {
 // Main loop
 async function main() {
     const configKeys = [
-        'useCustomId', 'customId', 'imdb_id', 'mal_id',
-        'autoPoster', 'customText', 'customBigText', 'customType', 'customImage'
+        'customId',
+        'imdb_id',
+        'mal_id',
+        'customText',
+        'customBigText',
+        'useCustomId',
+        'autoPoster',
+        'cleanFilename',
+        'customImage',
+        'cleanRegex'
     ];
 
     while (true) {
@@ -260,14 +269,14 @@ async function main() {
         } else if (configKeys.some((_, i) => choice === String(i + 2))) {
             const index = parseInt(choice) - 2;
             const key = configKeys[index];
-            if (key === 'customImage') {
+            if (key === 'customImage' || key === 'cleanRegex') {
                 const arrayValues = [];
                 let comment = '';
                 const lines = fs.readFileSync(configFile, 'utf-8').split('\n');
                 let inArray = false;
                 for (const line of lines) {
                     const match = line.match(/^\s*(\w+):\s*(.*?)(,)?\s*(\/\/.*)?$/);
-                    if (match && match[1] === 'customImage' && match[2].startsWith('[')) {
+                    if (match && match[1] === key && match[2].startsWith('[')) {
                         inArray = true;
                         comment = match[4] || '';
                         continue;
@@ -289,7 +298,7 @@ async function main() {
                     console.log(`${i + 1}. '${value}'`);
                 });
                 console.log(`${arrayValues.length + 1}. Add new element`);
-                if (arrayValues.length > 1) { 
+                if (arrayValues.length > 1) {
                     console.log(`${arrayValues.length + 2}. Delete element`);
                 }
                 console.log('0. Back');
@@ -298,7 +307,7 @@ async function main() {
                 if (subChoice === '0') {
                     continue;
                 } else if (subChoice === String(arrayValues.length + 1)) {
-                    const newValue = await question('Enter new URL for customImage (leave blank for empty element): ');
+                    const newValue = await question(`Enter new value for ${key} (leave blank for empty element): `);
                     editConfig(key, newValue, 'add');
                 } else if (arrayValues.length > 1 && subChoice === String(arrayValues.length + 2)) {
                     const delIndex = await question(`Enter element number to delete (1-${arrayValues.length}): `);
@@ -317,7 +326,7 @@ async function main() {
                 }
             } else {
                 let prompt = `Enter new value for ${key}`;
-                if (key === 'useCustomId' || key === 'autoPoster') {
+                if (key === 'useCustomId' || key === 'autoPoster' || key === 'cleanFilename') {
                     prompt += ' (true/false): ';
                     const newValue = (await question(prompt)).toLowerCase();
                     if (!['true', 'false'].includes(newValue)) {

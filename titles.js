@@ -1,50 +1,58 @@
 const { filenameParse } = require('@ctrl/video-filename-parser');
 const fs = require('fs');
+const path = require('path');
 
 // Fallback regex untuk mengekstrak episode
 const EPISODE_PATTERN = /(?:E|Ep|Episode| - | S?\d+ - )(\d{1,2})(?=\.|$)/i; // Cocokkan E01, Ep01, Episode 01, dll.
 
-// Fungsi untuk memuat titles.txt atau titles_sX.txt
-const loadTitles = () => {
-    const files = fs.readdirSync('.').filter(file => 
-        file.match(/^titles\.txt$/) || file.match(/^titles_s\d+\.txt$/)
-    );
+// Fungsi untuk memuat titles.txt atau titles_sX.txt dari direktori video
+const loadTitles = (videoDir) => {
+    try {
+        const files = fs.readdirSync(videoDir).filter(file => 
+            file.match(/^titles\.txt$/) || file.match(/^titles_s\d+\.txt$/)
+        );
 
-    // Jika ada lebih dari satu file titles, anggap tidak ada
-    if (files.length > 1) {
-        console.log('❌ Ditemukan lebih dari satu file titles, anggap tidak ada file titles.');
-        return { titles: [], titlesFile: null };
-    }
-    if (files.length === 0) {
-        console.log('❌ Tidak ada file titles.txt atau titles_sX.txt ditemukan! Menggunakan default.');
-        return { titles: [], titlesFile: null };
-    }
+        // Jika ada lebih dari satu file titles, anggap tidak ada
+        if (files.length > 1) {
+            console.log('❌ Ditemukan lebih dari satu file titles di direktori video, anggap tidak ada file titles.');
+            return { titles: [], titlesFile: null };
+        }
+        if (files.length === 0) {
+            console.log(`❌ Tidak ada file titles.txt atau titles_sX.txt ditemukan di ${videoDir}! Menggunakan default.`);
+            return { titles: [], titlesFile: null };
+        }
 
-    const titlesFile = files[0];
-    const titles = [];
-    const lines = fs.readFileSync(titlesFile, 'utf-8').split('\n');
-    for (const line of lines) {
-        const parts = line.trim().split('|');
-        if (parts.length === 3) {
-            try {
-                const episode_number = parseInt(parts[0]);
-                titles.push({
-                    episode_number,
-                    title: parts[1],
-                    release_date: parts[2]
-                });
-            } catch (error) {
-                console.error(`❌ Nomor episode tidak valid di ${titlesFile}: ${parts[0]}`);
+        const titlesFile = files[0];
+        const titlesFilePath = path.join(videoDir, titlesFile);
+        const titles = [];
+        const lines = fs.readFileSync(titlesFilePath, 'utf-8').split('\n');
+        for (const line of lines) {
+            const parts = line.trim().split('|');
+            if (parts.length === 3) {
+                try {
+                    const episode_number = parseInt(parts[0]);
+                    titles.push({
+                        episode_number,
+                        title: parts[1],
+                        release_date: parts[2]
+                    });
+                } catch (error) {
+                    console.error(`❌ Nomor episode tidak valid di ${titlesFilePath}: ${parts[0]}`);
+                }
             }
         }
+        console.log(`Loaded ${titles.length} episodes from ${titlesFilePath}`);
+        return { titles, titlesFile };
+    } catch (err) {
+        console.error(`❌ Error membaca file titles di ${videoDir}:`, err);
+        return { titles: [], titlesFile: null };
     }
-    console.log(`Loaded ${titles.length} episodes from ${titlesFile}`);
-    return { titles, titlesFile };
 };
 
 // Fungsi untuk mengambil episode title dan release date
-const fetchTitles = async (filename) => {
-    const { titles, titlesFile } = loadTitles();
+const fetchTitles = async (filename, filePath) => {
+    const videoDir = filePath ? path.dirname(filePath) : '.'; // Fallback ke direktori proyek jika filePath null
+    const { titles, titlesFile } = loadTitles(videoDir);
     let episode = null;
 
     // Coba parse dengan @ctrl/video-filename-parser
@@ -88,4 +96,4 @@ const fetchTitles = async (filename) => {
     return { episodeTitle: null, releaseDate: null };
 };
 
-module.exports = { fetchTitles };
+module.exports = fetchTitles;

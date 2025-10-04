@@ -151,7 +151,7 @@ To avoid constantly editing `config.js` or placing files in the project director
     1|The Beginning|2024-07-01
     2|The Adventure Continues|2024-07-08
     ```
-  - For seasons: Use `titles_s01.txt` (pad with zero for single digits). If no season file, it falls back to `titles.txt`.
+  - For seasons: Use `titles_s1.txt`. If no season file, it falls back to `titles.txt`.
   - **Benefit**: Each show's folder can have its own titles file—no need to copy to project dir or edit config.
 
 - **IDs (`imdb.txt` and `mal.txt`)**:

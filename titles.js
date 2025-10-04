@@ -49,6 +49,43 @@ const loadTitles = (videoDir) => {
     }
 };
 
+// Fungsi untuk mengambil IMDb/MAL ID dari file txt (imdb.txt atau mal.txt) di direktori video
+const fetchIdsFromTxt = (videoDir) => {
+    let imdbID = null;
+    let malID = null;
+    try {
+        const imdbFilePath = path.join(videoDir, 'imdb.txt');
+        const malFilePath = path.join(videoDir, 'mal.txt');
+
+        // Baca imdb.txt jika ada
+        if (fs.existsSync(imdbFilePath)) {
+            const imdbContent = fs.readFileSync(imdbFilePath, 'utf-8').trim();
+            if (imdbContent && imdbContent.startsWith('tt')) { // Validasi sederhana untuk IMDb ID
+                imdbID = imdbContent;
+                console.log(`Loaded IMDb ID from imdb.txt: ${imdbID}`);
+            } else {
+                console.error(`Invalid IMDb ID in ${imdbFilePath}: ${imdbContent}`);
+            }
+        }
+
+        // Baca mal.txt jika ada
+        if (fs.existsSync(malFilePath)) {
+            const malContent = fs.readFileSync(malFilePath, 'utf-8').trim();
+            if (malContent && !isNaN(malContent)) { // Validasi sederhana untuk MAL ID (angka)
+                malID = malContent;
+                console.log(`Loaded MAL ID from mal.txt: ${malID}`);
+            } else {
+                console.error(`Invalid MAL ID in ${malFilePath}: ${malContent}`);
+            }
+        }
+
+        return { imdbID, malID };
+    } catch (err) {
+        console.error(`❌ Error reading ID txt files in ${videoDir}:`, err);
+        return { imdbID: null, malID: null };
+    }
+};
+
 // Fungsi untuk mengambil episode title dan release date
 const fetchTitles = async (filename, filePath) => {
     const videoDir = filePath ? path.dirname(filePath) : '.'; // Fallback ke direktori proyek jika filePath null
@@ -96,4 +133,4 @@ const fetchTitles = async (filename, filePath) => {
     return { episodeTitle: null, releaseDate: null };
 };
 
-module.exports = fetchTitles;
+module.exports = { fetchTitles, fetchIdsFromTxt };

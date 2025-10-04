@@ -21,7 +21,7 @@ const cleanTitleForSearch = (title) => {
 // === Regex Episode Detector ===
 const episodeRegex = /(?:E|Ep|Episode| - | S?\d+ - )(\d{1,2})(?=\.|$)/i;
 
-const fetchPoster = async (imdbID, malID, filePath) => {
+const fetchPoster = async (imdbID, malID, filePath, isUsingTxtId = false) => {
   delete require.cache[require.resolve("./config")];
   const config = require("./config");
 
@@ -47,7 +47,7 @@ const fetchPoster = async (imdbID, malID, filePath) => {
       const response = await axios.get(jikanUrl);
       const anime = response.data.data;
       if (anime?.images?.jpg?.large_image_url) {
-        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: false };
+        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: isUsingTxtId ? true : false };
       }
     }
 
@@ -60,7 +60,7 @@ const fetchPoster = async (imdbID, malID, filePath) => {
       });
       const media = response.data.tv_results[0] || response.data.movie_results[0];
       if (media?.poster_path) {
-        return { poster: `${tmdbBaseImageUrl}${media.poster_path}`, showTitle: media.name || media.title, usedConfigId: false };
+        return { poster: `${tmdbBaseImageUrl}${media.poster_path}`, showTitle: media.name || media.title, usedConfigId: isUsingTxtId ? true : false };
       }
     }
 

@@ -25,7 +25,7 @@ const cleanTitleForSearch = (title) => {
     .trim();
 };
 
-const fetchPoster = async (imdbID, malID, filePath) => {
+const fetchPoster = async (imdbID, malID, filePath, isUsingTxtId = false) => {
   delete require.cache[require.resolve("./config")];
   const config = require("./config");
 
@@ -47,7 +47,7 @@ const fetchPoster = async (imdbID, malID, filePath) => {
       const response = await axios.get(jikanUrl);
       const anime = response.data.data;
       if (anime?.images?.jpg?.large_image_url) {
-        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: false };
+        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: isUsingTxtId ? true : false };
       }
     }
 
@@ -59,7 +59,7 @@ const fetchPoster = async (imdbID, malID, filePath) => {
       const data = response.data;
       if (data?.Poster && data?.Poster !== "N/A") {
         const fixedPoster = fixOmdbPosterUrl(data.Poster);
-        return { poster: fixedPoster, showTitle: data.Title, usedConfigId: false };
+        return { poster: fixedPoster, showTitle: data.Title, usedConfigId: isUsingTxtId ? true : false };
       }
     }
 

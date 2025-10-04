@@ -228,7 +228,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Unified `largeImageText` for both playing and paused states: prioritizes `customBigText` > release date (from titles/metadata) > "MPC-HC".
 - Removed `isUsingConfigId` and `isUsingTxtId` flags—simplifies code as `name` now uses showTitle directly if available from any source (metadata, txt, or config).
 - Limited autoPoster: Fetches posters from filename search but sets `showTitle: null` to prevent inaccurate titles (e.g., sequel mismatches) from appearing in `name`; posters still used for images.
-- Removed custom clientId switching—always uses fixed MPC clientId (`1298018501814128796`). Deleted related functions (`getCustomId`, `switchClientId`), debounce logic, and config reload checks for clientId changes. Custom names now handled via `name` field.
+- Removed custom clientId switching—always uses fixed MPC clientId. Deleted related functions (`getCustomId`, `switchClientId`), debounce logic, and config reload checks for clientId changes. Custom names now handled via `name` field.
 - Added support for per-video directory files: `titles.txt`/`titles_sX.txt` and `imdb.txt`/`mal.txt` can now be placed directly in the video's folder for easy, non-global customization without editing config.js or cluttering the project directory.
 
 

@@ -2,7 +2,7 @@ const RPC = require('@xhayper/discord-rpc');
 const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
 const fetchPoster = require('./poster');
-const fetchTitles = require('./titles');
+const { fetchTitles, fetchIdsFromTxt } = require('./titles');
 const path = require('path');
 let config = require('./config');
 
@@ -174,57 +174,84 @@ const getMpcStatus = async () => {
         let movieName = null;
         let isFallback = false;
         let isUsingConfigId = false; // Flag untuk cek apakah menggunakan ID dari config
+		let isUsingTxtId = false; // Flag untuk ID dari txt
 
-        if (filePath) {
-            if (filePath !== lastFilePath || !cachedMetadata) {
-                await new Promise((resolve, reject) => {
-                    ffmpeg.ffprobe(filePath, (err, metadata) => {
-                        if (err) {
-                            console.error('Error fetching metadata:', err);
-                            cachedMetadata = { isError: true };
-                            lastFilePath = filePath;
-                            resolve();
-                            return;
-                        }
+		if (filePath) {
+			if (filePath !== lastFilePath || !cachedMetadata) {
+				await new Promise((resolve, reject) => {
+					ffmpeg.ffprobe(filePath, (err, metadata) => {
+						if (err) {
+							console.error('Error fetching metadata:', err);
+							cachedMetadata = { isError: true };
+							lastFilePath = filePath;
+							resolve();
+							return;
+						}
 
-                        const tags = metadata.format.tags || {};
-                        cachedMetadata = {
-                            metaTitle: tags.title,
-                            imdbID: tags.IMDB_ID || null,
-                            malID: tags.MAL_ID || null,
-                            releaseDate: tags.DATE_RELEASED || null,
-                            isError: false
-                        };
-                        lastFilePath = filePath;
-                        resolve();
-                    });
-                });
-            }
+						const tags = metadata.format.tags || {};
+						cachedMetadata = {
+							metaTitle: tags.title,
+							imdbID: tags.IMDB_ID || null,
+							malID: tags.MAL_ID || null,
+							releaseDate: tags.DATE_RELEASED || null,
+							isError: false
+						};
+						lastFilePath = filePath;
+						resolve();
+					});
+				});
+			}
 
-            if (cachedMetadata && !cachedMetadata.isError) {
-                const metaTitle = cachedMetadata.metaTitle;
-                releaseDate = cachedMetadata.releaseDate;
-                ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
+			// Prioritas 1: ID dari metadata
+			if (cachedMetadata && !cachedMetadata.isError) {
+				ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
+				console.log(`IDs from metadata: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+			}
 
-                if (config.customText && config.customText.trim()) {
-                    movieName = config.customText;
-                } else if (metaTitle && metaTitle.length <= 128) {
-                    movieName = metaTitle;
-                } else {
-                    movieName = cleanName(fileName);
-                    isFallback = true;
-                }
-            } else {
-                movieName = cleanName(fileName);
-                isFallback = true;
-            }
-            // Cek apakah akan menggunakan ID dari config
-            isUsingConfigId = (!ids.imdbID && config.imdb_id) || (!ids.malID && config.mal_id);
-        } else {
-            movieName = cleanName(fileName);
-            isFallback = true;
-            isUsingConfigId = config.imdb_id || config.mal_id; // Gunakan config ID jika filePath tidak ada
-        }
+			// Prioritas 2: ID dari txt di direktori video, jika metadata null
+			if (!ids.imdbID || !ids.malID) {
+				const videoDir = path.dirname(filePath);
+				const txtIds = fetchIdsFromTxt(videoDir);
+				if (txtIds.imdbID && !ids.imdbID) {
+					ids.imdbID = txtIds.imdbID;
+					isUsingTxtId = true;
+				}
+				if (txtIds.malID && !ids.malID) {
+					ids.malID = txtIds.malID;
+					isUsingTxtId = true;
+				}
+				console.log(`IDs from txt: IMDb=${txtIds.imdbID}, MAL=${txtIds.malID}`);
+			}
+
+			// Prioritas 3: ID dari config, jika txt/metadata null
+			if (!ids.imdbID) {
+				ids.imdbID = config.imdb_id.trim() || null;
+			}
+			if (!ids.malID) {
+				ids.malID = config.mal_id.trim() || null;
+			}
+			console.log(`Final IDs: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+
+			const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
+			releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
+
+			if (config.customText && config.customText.trim()) {
+				movieName = config.customText;
+			} else if (metaTitle && metaTitle.length <= 128) {
+				movieName = metaTitle;
+			} else {
+				movieName = cleanName(fileName);
+				isFallback = true;
+			}
+			// Cek apakah akan menggunakan ID dari config (setelah prioritas txt)
+			isUsingConfigId = (!ids.imdbID && config.imdb_id) || (!ids.malID && config.mal_id) || isUsingTxtId;
+		} else {
+			movieName = cleanName(fileName);
+			isFallback = true;
+			// Fallback ke config jika filePath tidak ada
+			ids = { imdbID: config.imdb_id.trim() || null, malID: config.mal_id.trim() || null };
+			isUsingConfigId = config.imdb_id || config.mal_id;
+		}
 
         const cleanedMovieName = cleanName(movieName);
 
@@ -255,6 +282,7 @@ const getMpcStatus = async () => {
             releaseDate,
             isFallback,
 			filePath,
+			isUsingTxtId,
             isUsingConfigId // Kembalikan flag
         };
     } catch (error) {
@@ -358,7 +386,7 @@ async function updatePresence() {
 
 		if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
 			const titleForSearch = cleanName(mpcStatus.fileName);
-			const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
+			const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch, mpcStatus.isUsingTxtId || false);
 			if (fetchedTitle) {
 				showTitle = fetchedTitle;
 				console.log(`Set showTitle from fetchPoster: "${showTitle}"`);
@@ -443,7 +471,7 @@ async function updatePresence() {
 			}
 
             const activityPayload = {
-                name: 'Unused', // ga kepake, kalo statustype 0 masih pake nama dari clientId
+                //name: 'Unused', // ga kepake, kalo statustype 0 masih pake nama dari clientId
                 details: detailsText,
                 state: stateText,
                 startTimestamp: startTimestamp,

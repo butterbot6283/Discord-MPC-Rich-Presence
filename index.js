@@ -77,10 +77,8 @@ function cleanName(name, isMovieName = false) {
     if (!isMovieName && config.cleanFilename !== false) { // Periksa cleanFilename
         // Regex default
         cleanedName = cleanedName
-            .replace(/\[.*?\]/g, '')   // Hapus [tags]
-            .replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
-            .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1'); // Hilangkan spasi sebelum ekstensi
-
+            .replace(/\[.*?\]/g, '');   // Hapus [tags]
+            
         // Terapkan regex kustom dari config.cleanRegex
         if (Array.isArray(config.cleanRegex) && config.cleanRegex.length > 0) {
             config.cleanRegex.forEach(regex => {
@@ -98,6 +96,8 @@ function cleanName(name, isMovieName = false) {
     cleanedName = cleanedName
         //.replace(/[\._\-]/g, ' ') // Ganti titik, underscore, dan tanda hubung dengan spasi [nonaktif]
         //.replace(/\(.*?\)/g, '') // Hapus teks dalam kurung biasa [nonaktif]
+		.replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
+        .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1') // Hilangkan spasi sebelum ekstensi
         .replace(/\s{2,}/g, ' ') // Ganti spasi ganda dengan satu spasi
         .trim();
 

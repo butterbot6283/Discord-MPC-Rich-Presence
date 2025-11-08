@@ -316,26 +316,34 @@ async function updatePresence() {
 			config.autoPoster !== lastAutoPoster;
 
 		if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
-			const titleForSearch = cleanName(mpcStatus.fileName);
-			const { poster, showTitle: fetchedTitle, usedConfigId } = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
-			if (fetchedTitle) {
-				showTitle = fetchedTitle;
-				console.log(`Set showTitle from fetchPoster: "${showTitle}"`);
-			}
-			if (!customImageURL) {
-				largeImageKey = poster || largeImageKey;
-				if (!poster) console.log('Fallback to default image: No poster found from OMDb or Jikan.');
-			}
-
-			// Update cache
-			cachedPoster = poster;
-			cachedShowTitle = fetchedTitle;
-			lastFetchedFileName = mpcStatus.fileName;
-			lastImdbId = mpcStatus.imdbID;
-			lastMalId = mpcStatus.malID;
-			lastConfigImdbId = config.imdb_id;
-			lastConfigMalId = config.mal_id;
-			lastAutoPoster = config.autoPoster;
+		    const titleForSearch = cleanName(mpcStatus.fileName);
+		    const result = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
+		
+		    // KALAU API ERROR → JANGAN CACHE, COBA LAGI NANTI
+		    if (result.retry) {
+		        console.log("API gagal → skip cache, coba lagi 15 detik");
+		        // JANGAN UPDATE cache variables!
+		    } else {
+		        // KALAU SUKSES → CACHE NORMAL
+		        if (result.showTitle) {
+		            showTitle = result.showTitle;
+		            console.log(`Set showTitle: "${showTitle}"`);
+		        }
+		        if (!customImageURL) {
+		            largeImageKey = result.poster || largeImageKey;
+		        }
+		
+		        // Update cache
+		        cachedPoster = result.poster;
+		        cachedShowTitle = result.showTitle;
+		        lastFetchedFileName = mpcStatus.fileName;
+		        lastImdbId = mpcStatus.imdbID;
+		        lastMalId = mpcStatus.malID;
+		        lastConfigImdbId = config.imdb_id;
+		        lastConfigMalId = config.mal_id;
+		        lastAutoPoster = config.autoPoster;
+		        console.log("Cache diperbarui!");
+		    }
 		} else if (!needsFetch) {
 			// Gunakan cache jika tidak perlu fetch ulang
 			if (cachedShowTitle) {

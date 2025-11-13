@@ -130,7 +130,6 @@ module.exports = {
     cleanRegex: [ // Custom regex patterns to clean video filename
         '\\b(720p|1080p|480p|BluRay|BRRip|Webrip|WEB-DL|WEBDL|HDRip|x264|x265|HEVC|HDTV|DVDRip|AAC)\\b\\s*'
     ],
-    customType: '', // Discord presence type (0 = name, 1 = state, 2 = details, leave empty for auto)
 };
 ```
 - Use `menu.js` to edit these settings interactively.
@@ -234,21 +233,11 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 
 ### **Play**
-details as status
+<img width="570" height="408" alt="image" src="https://github.com/user-attachments/assets/8e4bd226-03d2-48f5-b021-6049da06709d" />
 
-<img width="565" height="439" alt="{6BFD343E-60D8-4A40-BCE2-EA14F872E046}" src="https://github.com/user-attachments/assets/dc5210a5-30f6-4089-8da2-f264d4222e7c" /> 
-
-name as status
-
-<img width="566" height="450" alt="{CBF0419A-59B8-4DD6-BAAC-C842BF7F389A}" src="https://github.com/user-attachments/assets/3d47bfe0-74ec-4232-b819-1dcf36f650be" />
 
 
 ## **Pause**
-details as status
+<img width="568" height="409" alt="image" src="https://github.com/user-attachments/assets/ff1f06c7-beb9-44e4-9b83-5914239c89a8" />
 
-<img width="565" height="444" alt="{90D472BC-9B94-421E-92B7-2FD55128DBEF}" src="https://github.com/user-attachments/assets/0e77b281-9fe8-4bb5-8c45-a1b91f0f69a7" /> 
-
-name as status
-
-<img width="562" height="452" alt="{74A3082B-8FBD-4465-BCC3-760ADE7D749E}" src="https://github.com/user-attachments/assets/6895eed7-c8dc-485f-a2d5-be9bb3115dea" />
 

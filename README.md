@@ -23,7 +23,7 @@ A Node.js script to display your **Media Player Classic (MPC-HC)** playback stat
 
 ## Requirements
 
-- **Node.js**: ~~Version 16 or higher.~~ ( Use version 20 lts! Lower error in dependency, higher error in jikan API )
+- **Node.js**: Version 18 or higher.
 - **MPC-HC**: Media Player Classic with web interface enabled (default port: 13579).
 - **FFmpeg**: Installed and accessible in system PATH for metadata extraction.
 - **Discord**: Running on your system for Rich Presence to work.

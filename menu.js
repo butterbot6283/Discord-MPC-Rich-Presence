@@ -192,7 +192,7 @@ function editConfig(key, newValue, index = null) {
                 found = true;
 
             } else if (match && currentKey === key) {
-                if (key === 'useCustomId' || key === 'autoPoster' || key === 'cleanFilename') {
+                if (key === 'autoPoster' || key === 'cleanFilename') {
                     newValue = newValue.toLowerCase();
                     if (!['true', 'false'].includes(newValue)) {
                         console.log(`Value for ${key} must be true or false!`);
@@ -222,12 +222,10 @@ function editConfig(key, newValue, index = null) {
 // Main loop
 async function main() {
     const configKeys = [
-        'customId',
         'imdb_id',
         'mal_id',
         'customText',
         'customBigText',
-        'useCustomId',
         'autoPoster',
         'cleanFilename',
         'customImage',
@@ -326,7 +324,7 @@ async function main() {
                 }
             } else {
                 let prompt = `Enter new value for ${key}`;
-                if (key === 'useCustomId' || key === 'autoPoster' || key === 'cleanFilename') {
+                if (key === 'autoPoster' || key === 'cleanFilename') {
                     prompt += ' (true/false): ';
                     const newValue = (await question(prompt)).toLowerCase();
                     if (!['true', 'false'].includes(newValue)) {

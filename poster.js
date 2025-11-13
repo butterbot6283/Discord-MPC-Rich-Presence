@@ -1,8 +1,7 @@
 const axios = require("axios");
-const { filenameParse } = require("@ctrl/video-filename-parser");
 
 // === API Keys ===
-const OMDB_API_KEY = ""; // isi manual
+const OMDB_API_KEY = ""; // Ganti kalau mau
 
 // === Fix OMDb Poster URL ===
 const fixOmdbPosterUrl = (url) => {
@@ -12,97 +11,89 @@ const fixOmdbPosterUrl = (url) => {
   return url;
 };
 
-// === Fallback Cleaner ===
-const cleanTitleForSearch = (title) => {
-  return title
-    .replace(/\[.*?\]/g, "")
-    .replace(/\b(S\d{1,2}E\d{1,2}|E\d{1,2}|Episode \d{1,2})\b/gi, "")
-    .replace(
-      /\b(720p|1080p|480p|BluRay|BRRip|Webrip|WEB-DL|WEBDL|HDRip|x264|x265|HEVC|HDTV|DVDRip|AAC)\b/gi,
-      ""
-    )
-    .replace(/[\._\-]/g, " ")
-    .trim();
-};
-
-const fetchPoster = async (imdbID, malID, filePath, isUsingTxtId = false) => {
+// === MAIN FUNCTION ===
+const fetchPoster = async (imdbID, malID, filePath) => {
   delete require.cache[require.resolve("./config")];
   const config = require("./config");
 
-  // Parse filename
-  const parsed = filenameParse(filePath, true);
-  let title = parsed?.title || "";
-  if (title) {
-    console.log(`[parser] Parsed title: "${title}" from "${filePath}"`);
-  } else {
-    title = cleanTitleForSearch(filePath);
-    console.log(`[fallback] Cleaned title: "${title}" from "${filePath}"`);
-  }
-
   try {
-    // === Prioritas 1: MAL ID (metadata) ===
+    // === 1. MAL ID (Jikan) ===
     if (malID) {
-      console.log(`[api] Fetching from Jikan using MAL_ID: ${malID}`);
-      const jikanUrl = `https://api.jikan.moe/v4/anime/${malID}`;
-      const response = await axios.get(jikanUrl);
-      const anime = response.data.data;
+      console.log(`[Jikan] Coba MAL_ID: ${malID}`);
+      const res = await axios.get(`https://api.jikan.moe/v4/anime/${malID}`, { timeout: 8000 });
+      const anime = res.data.data;
       if (anime?.images?.jpg?.large_image_url) {
-        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: isUsingTxtId ? true : false };
+        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, retry: false };
       }
     }
 
-    // === Prioritas 2: IMDb ID (OMDb) ===
+    // === 2. IMDb ID (OMDb) ===
     if (imdbID && OMDB_API_KEY) {
-      console.log(`[api] Fetching from OMDb using IMDb_ID: ${imdbID}`);
-      const omdbUrl = `https://www.omdbapi.com/?i=${imdbID}&apikey=${OMDB_API_KEY}`;
-      const response = await axios.get(omdbUrl);
-      const data = response.data;
-      if (data?.Poster && data?.Poster !== "N/A") {
-        const fixedPoster = fixOmdbPosterUrl(data.Poster);
-        return { poster: fixedPoster, showTitle: data.Title, usedConfigId: isUsingTxtId ? true : false };
+      console.log(`[OMDb] Coba IMDb: ${imdbID}`);
+      const res = await axios.get(
+        `https://www.omdbapi.com/?i=${imdbID}&apikey=${OMDB_API_KEY}`,
+        { timeout: 8000 }
+      );
+      const data = res.data;
+      if (data?.Poster && data.Poster !== "N/A") {
+        return {
+          poster: fixOmdbPosterUrl(data.Poster),
+          showTitle: data.Title,
+          retry: false
+        };
       }
     }
 
-    // === Prioritas 3: Config MAL ID ===
+    // === 3. Config MAL ID ===
     if (config.mal_id) {
-      console.log(`[api] Fetching from Jikan using config.mal_id: ${config.mal_id}`);
-      const jikanUrl = `https://api.jikan.moe/v4/anime/${config.mal_id}`;
-      const response = await axios.get(jikanUrl);
-      const anime = response.data.data;
+      console.log(`[Jikan] Coba config.mal_id: ${config.mal_id}`);
+      const res = await axios.get(`https://api.jikan.moe/v4/anime/${config.mal_id}`, { timeout: 8000 });
+      const anime = res.data.data;
       if (anime?.images?.jpg?.large_image_url) {
-        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: true };
+        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, retry: false };
       }
     }
 
-    // === Prioritas 4: Config IMDb ID (OMDb) ===
+    // === 4. Config IMDb ID ===
     if (config.imdb_id && OMDB_API_KEY) {
-      console.log(`[api] Fetching from OMDb using config.imdb_id: ${config.imdb_id}`);
-      const omdbUrl = `https://www.omdbapi.com/?i=${config.imdb_id}&apikey=${OMDB_API_KEY}`;
-      const response = await axios.get(omdbUrl);
-      const data = response.data;
-      if (data?.Poster && data?.Poster !== "N/A") {
-        const fixedPoster = fixOmdbPosterUrl(data.Poster);
-        return { poster: fixedPoster, showTitle: data.Title, usedConfigId: true };
+      console.log(`[OMDb] Coba config.imdb_id: ${config.imdb_id}`);
+      const res = await axios.get(
+        `https://www.omdbapi.com/?i=${config.imdb_id}&apikey=${OMDB_API_KEY}`,
+        { timeout: 8000 }
+      );
+      const data = res.data;
+      if (data?.Poster && data.Poster !== "N/A") {
+        return {
+          poster: fixOmdbPosterUrl(data.Poster),
+          showTitle: data.Title,
+          retry: false
+        };
       }
     }
 
-    // === Prioritas 5: AutoPoster pakai title (Jikan) ===
-    if (config.autoPoster && title) {
-      console.log(`[api] Searching Jikan with title: "${title}"`);
-      const jikanUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`;
-      const response = await axios.get(jikanUrl);
-      const anime = response.data.data[0];
-      if (anime?.images?.jpg?.large_image_url) {
-        return { poster: anime.images.jpg.large_image_url, showTitle: anime.title, usedConfigId: false };
+    // === 5. AutoPoster (Jikan Search) ===
+    if (config.autoPoster && filePath) {
+      const title = filePath.split(/[\\/]/).pop().replace(/\.[^.]+$/, "").replace(/\[.*?\]|\s*S\d+E\d+.*/gi, "").trim();
+      if (title) {
+        console.log(`[AutoPoster] Cari: "${title}"`);
+        const res = await axios.get(
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`,
+                                    { timeout: 8000 }
+        );
+        const anime = res.data.data[0];
+        if (anime?.images?.jpg?.large_image_url) {
+          return { poster: anime.images.jpg.large_image_url, showTitle: null, retry: false };
+        }
       }
     }
 
-    console.log("[result] No poster found, returning null");
-    return { poster: null, showTitle: null, usedConfigId: false };
+    // SEMUA GAGAL → minta retry
+    console.log("[API] Semua gagal → minta retry");
+    return { poster: null, showTitle: null, retry: true };
 
-  } catch (error) {
-    console.error("Error fetching poster:", error.message);
-    return { poster: null, showTitle: null, usedConfigId: false };
+  } catch (err) {
+    console.log(`[API] ERROR: ${err.code || err.message}`);
+    return { poster: null, showTitle: null, retry: true };
   }
 };
 

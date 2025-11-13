@@ -1,4 +1,3 @@
-const { filenameParse } = require('@ctrl/video-filename-parser');
 const fs = require('fs');
 const path = require('path');
 
@@ -88,6 +87,7 @@ const fetchIdsFromTxt = (videoDir) => {
 
 // Fungsi untuk mengambil episode title dan release date
 const fetchTitles = async (filename, filePath) => {
+    const { filenameParse } = await import('@ctrl/video-filename-parser');
     const videoDir = filePath ? path.dirname(filePath) : '.'; // Fallback ke direktori proyek jika filePath null
     const { titles, titlesFile } = loadTitles(videoDir);
     let episode = null;

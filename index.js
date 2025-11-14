@@ -365,14 +365,34 @@ async function updatePresence() {
             const smolText = mpcStatus.isPlaying ? "Playing" : "Paused";
 
             // State text tetap seperti sebelumnya
-            const stateText = mpcStatus.isPlaying 
-                ? (config.customText && config.customText.trim() ? config.customText 
-                  : (fetchedEpisodeTitle ? fetchedEpisodeTitle 
-                    : (mpcStatus.title && !mpcStatus.title.match(/\[.*?\]/) && !mpcStatus.isFallback ? mpcStatus.title
-                      : getFallbackName(mpcStatus.fileName))))
-                : `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
+			let stateText;
+            if (mpcStatus.isPlaying) {
+                // 1. episodeTitle (dari titles.txt)
+                if (fetchedEpisodeTitle) {
+                    stateText = fetchedEpisodeTitle;
+                    console.log(`State: episodeTitle → "${stateText}"`);
+                }
+                // 2. metadata title
+                else if (!mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) {
+                    stateText = mpcStatus.title;
+                    console.log(`State: metadata title → "${stateText}"`);
+                }
+                // 3. filename + ekstensi (hanya kalau showTitle ada)
+                else if (showTitle) {
+                    stateText = mpcStatus.fileName; // filename asli (dengan .mkv)
+                    console.log(`State: filename + ext (showTitle ada) → "${stateText}"`);
+                }
+                // 4. fallback: MKV Video (hanya kalau showTitle null)
+                else {
+                    stateText = getFallbackName(mpcStatus.fileName);
+                    console.log(`State: fallback → "${stateText}"`);
+                }
+            } else {
+                // PAUSE → tetap waktu
+                stateText = `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
+            }
             console.log(`stateText set to: "${stateText}"`);
-
+			
             // Unified largeImageText untuk play/pause
             const largeImageText = config.customBigText && config.customBigText.trim() 
                 ? config.customBigText 

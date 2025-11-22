@@ -365,7 +365,7 @@ async function updatePresence() {
             const smolText = mpcStatus.isPlaying ? "Playing" : "Paused";
 
             // State text tetap seperti sebelumnya
-			let stateText;
+            let stateText;
             if (mpcStatus.isPlaying) {
                 // 1. episodeTitle (dari titles.txt)
                 if (fetchedEpisodeTitle) {
@@ -392,11 +392,23 @@ async function updatePresence() {
                 stateText = `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
             }
             console.log(`stateText set to: "${stateText}"`);
-			
+
             // Unified largeImageText untuk play/pause
-            const largeImageText = config.customBigText && config.customBigText.trim() 
-                ? config.customBigText 
-                : (fetchedReleaseDate || mpcStatus.releaseDate ? `(${fetchedReleaseDate || mpcStatus.releaseDate})` : 'MPC-HC');
+            let largeImageText;
+
+            if (mpcStatus.isPaused && !showTitle && fetchedEpisodeTitle) {
+                // KHUSUS: Pause + showTitle null + ada titles.txt → taruh episode di bawah poster
+                largeImageText = fetchedEpisodeTitle;
+                console.log(`largeImageText: episode title (khusus pause tanpa showTitle) → "${largeImageText}"`);
+            } else {
+                // NORMAL: config > fetchedReleaseDate > metadata release > MPC-HC
+                largeImageText = config.customBigText && config.customBigText.trim()
+                ? config.customBigText
+                : (fetchedReleaseDate ? `(${fetchedReleaseDate})`
+                : (mpcStatus.releaseDate ? `(${mpcStatus.releaseDate})`
+                : 'MPC-HC'));
+                console.log(`largeImageText: normal → "${largeImageText}"`);
+            }
 
             const startTimestamp = mpcStatus.isPlaying ? Date.now() - (mpcStatus.position * 1000) : Date.now() - (mpcStatus.position * 1000);
             const endTimestamp = mpcStatus.isPlaying ? startTimestamp + (mpcStatus.duration * 1000) : startTimestamp + (mpcStatus.position * 1000);
@@ -414,10 +426,27 @@ async function updatePresence() {
                 console.log(`PLAY MODE → name: Media Player Classic | details: "${detailsText}"`);
             } else {
                 // PAUSE → name = showTitle, details = episode, type 0
-                nameText = showTitle || undefined;
-                detailsText = fetchedEpisodeTitle || (!mpcStatus.isFallback ? mpcStatus.title : mpcStatus.fileName);
-                statusType = 0;
-                console.log(`PAUSE MODE → name: "${nameText}" | details: "${detailsText}"`);
+                if (showTitle) {
+                    // Normal: showTitle ada → name = showTitle, details = episode
+                    nameText = showTitle;
+                    detailsText = fetchedEpisodeTitle || (!mpcStatus.isFallback ? mpcStatus.title : mpcStatus.fileName);
+                    statusDisplayType = 0;
+                    console.log(`PAUSE: Normal → name="${showTitle}", details="${detailsText}"`);
+                } else if (fetchedEpisodeTitle) {
+                    // KHUSUS: showTitle null, tapi ada titles.txt → name = MPC, details = filename, largeImageText = episode
+                    nameText = undefined; // → Media Player Classic
+                    detailsText = mpcStatus.fileName;
+                    statusDisplayType = 0;
+                    // Paksa largeImageText jadi episode title (bukan release date)
+                    largeImageText = fetchedEpisodeTitle;
+                    console.log(`PAUSE: showTitle null + titles.txt → name=MPC, details=filename, largeImageText="${fetchedEpisodeTitle}"`);
+                } else {
+                    // Tidak ada apa-apa → default
+                    nameText = undefined;
+                    detailsText = mpcStatus.fileName;
+                    statusDisplayType = 0;
+                    console.log(`PAUSE: Fallback → name=MPC, details=filename`);
+                }
             }
 
             const activityPayload = {

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Fallback regex untuk mengekstrak episode
-const EPISODE_PATTERN = /(?:E|Ep|Episode| - | S?\d+ - )(\d{1,2})(?=\.|$)/i; // Cocokkan E01, Ep01, Episode 01, dll.
+const EPISODE_PATTERN = /(?:Season\s*\d+|S\d+)?[\s._-]*(?:Ep(?:isode)?\s*)?0*(\d{1,4})(?=\.|_|\s|\[|$)/i; // Cocokkan E01, Ep01, Episode 01, dll.
 
 // Fungsi untuk memuat titles.txt atau titles_sX.txt dari direktori video
 const loadTitles = (videoDir) => {
@@ -134,3 +134,4 @@ const fetchTitles = async (filename, filePath) => {
 };
 
 module.exports = { fetchTitles, fetchIdsFromTxt };
+

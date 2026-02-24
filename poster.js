@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 // === API Keys ===
-const OMDB_API_KEY = ""; // Ganti kalau mau
+const OMDB_API_KEY = "deae73f3"; // Ganti kalau mau
 
 // === Fix OMDb Poster URL ===
 const fixOmdbPosterUrl = (url) => {

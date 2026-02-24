@@ -1,7 +1,7 @@
 const RPC = require('@xhayper/discord-rpc');
 const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
-const fetchPoster = require('./poster2');
+const fetchPoster = require('./poster');
 const { fetchTitles, fetchIdsFromTxt } = require('./titles');
 const path = require('path');
 let config = require('./config');
@@ -14,6 +14,8 @@ const createClient = () => new RPC.Client({ clientId: mpcId });
 
 // Inisialisasi client dengan mpcId
 let client = createClient();
+let lastPlaybackState = 'offline'; // 'playing' | 'paused' | 'stopped'
+let presenceInterval = null;
 
 //config reload
 const reloadConfig = () => {
@@ -31,8 +33,8 @@ function cleanName(name, isMovieName = false) {
     if (!isMovieName && config.cleanFilename !== false) { // Periksa cleanFilename
         // Regex default
         cleanedName = cleanedName
-            .replace(/\[.*?\]/g, '');   // Hapus [tags]
-            
+        .replace(/\[.*?\]/g, '');   // Hapus [tags]
+
         // Terapkan regex kustom dari config.cleanRegex
         if (Array.isArray(config.cleanRegex) && config.cleanRegex.length > 0) {
             config.cleanRegex.forEach(regex => {
@@ -48,12 +50,12 @@ function cleanName(name, isMovieName = false) {
     }
 
     cleanedName = cleanedName
-        //.replace(/[\._\-]/g, ' ') // Ganti titik, underscore, dan tanda hubung dengan spasi [nonaktif]
-        //.replace(/\(.*?\)/g, '') // Hapus teks dalam kurung biasa [nonaktif]
-		.replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
-        .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1') // Hilangkan spasi sebelum ekstensi
-        .replace(/\s{2,}/g, ' ') // Ganti spasi ganda dengan satu spasi
-        .trim();
+    //.replace(/[\._\-]/g, ' ') // Ganti titik, underscore, dan tanda hubung dengan spasi [nonaktif]
+    //.replace(/\(.*?\)/g, '') // Hapus teks dalam kurung biasa [nonaktif]
+    .replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
+    .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1') // Hilangkan spasi sebelum ekstensi
+    .replace(/\s{2,}/g, ' ') // Ganti spasi ganda dengan satu spasi
+    .trim();
 
     console.log(`Cleaned name: ${cleanedName}`);
     return cleanedName;
@@ -107,84 +109,84 @@ const getMpcStatus = async () => {
 
         const filePathMatch = data.match(/<p id="filepath">(.+?)<\/p>/);
         const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
-		console.log(`Extracted filePath: ${filePath}`);
+        console.log(`Extracted filePath: ${filePath}`);
 
         let ids = { imdbID: null, malID: null };
         let releaseDate = null;
         let movieName = null;
         let isFallback = false;
 
-		if (filePath) {
-			if (filePath !== lastFilePath || !cachedMetadata) {
-				await new Promise((resolve, reject) => {
-					ffmpeg.ffprobe(filePath, (err, metadata) => {
-						if (err) {
-							console.error('Error fetching metadata:', err);
-							cachedMetadata = { isError: true };
-							lastFilePath = filePath;
-							resolve();
-							return;
-						}
+        if (filePath) {
+            if (filePath !== lastFilePath || !cachedMetadata) {
+                await new Promise((resolve, reject) => {
+                    ffmpeg.ffprobe(filePath, (err, metadata) => {
+                        if (err) {
+                            console.error('Error fetching metadata:', err);
+                            cachedMetadata = { isError: true };
+                            lastFilePath = filePath;
+                            resolve();
+                            return;
+                        }
 
-						const tags = metadata.format.tags || {};
-						cachedMetadata = {
-							metaTitle: tags.title,
-							imdbID: tags.IMDB_ID || null,
-							malID: tags.MAL_ID || null,
-							releaseDate: tags.DATE_RELEASED || null,
-							isError: false
-						};
-						lastFilePath = filePath;
-						resolve();
-					});
-				});
-			}
+                        const tags = metadata.format.tags || {};
+                        cachedMetadata = {
+                            metaTitle: tags.title,
+                            imdbID: tags.IMDB_ID || null,
+                            malID: tags.MAL_ID || null,
+                            releaseDate: tags.DATE_RELEASED || null,
+                            isError: false
+                        };
+                        lastFilePath = filePath;
+                        resolve();
+                    });
+                });
+            }
 
-			// Prioritas 1: ID dari metadata
-			if (cachedMetadata && !cachedMetadata.isError) {
-				ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
-				console.log(`IDs from metadata: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
-			}
+            // Prioritas 1: ID dari metadata
+            if (cachedMetadata && !cachedMetadata.isError) {
+                ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
+                console.log(`IDs from metadata: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+            }
 
-			// Prioritas 2: ID dari txt di direktori video, jika metadata null
-			if (!ids.imdbID || !ids.malID) {
-				const videoDir = path.dirname(filePath);
-				const txtIds = fetchIdsFromTxt(videoDir);
-				if (txtIds.imdbID && !ids.imdbID) {
-					ids.imdbID = txtIds.imdbID;
-				}
-				if (txtIds.malID && !ids.malID) {
-					ids.malID = txtIds.malID;
-				}
-				console.log(`IDs from txt: IMDb=${txtIds.imdbID}, MAL=${txtIds.malID}`);
-			}
+            // Prioritas 2: ID dari txt di direktori video, jika metadata null
+            if (!ids.imdbID || !ids.malID) {
+                const videoDir = path.dirname(filePath);
+                const txtIds = fetchIdsFromTxt(videoDir);
+                if (txtIds.imdbID && !ids.imdbID) {
+                    ids.imdbID = txtIds.imdbID;
+                }
+                if (txtIds.malID && !ids.malID) {
+                    ids.malID = txtIds.malID;
+                }
+                console.log(`IDs from txt: IMDb=${txtIds.imdbID}, MAL=${txtIds.malID}`);
+            }
 
-			// Prioritas 3: ID dari config, jika txt/metadata null
-			if (!ids.imdbID) {
-				ids.imdbID = config.imdb_id.trim() || null;
-			}
-			if (!ids.malID) {
-				ids.malID = config.mal_id.trim() || null;
-			}
-			console.log(`Final IDs: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+            // Prioritas 3: ID dari config, jika txt/metadata null
+            if (!ids.imdbID) {
+                ids.imdbID = config.imdb_id.trim() || null;
+            }
+            if (!ids.malID) {
+                ids.malID = config.mal_id.trim() || null;
+            }
+            console.log(`Final IDs: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
 
-			const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
-			releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
+            const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
+            releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
 
-			if (config.customText && config.customText.trim()) {
-				movieName = config.customText;
-			} else if (metaTitle && metaTitle.length <= 128) {
-				movieName = metaTitle;
-			} else {
-				movieName = cleanName(fileName);
-				isFallback = true;
-			}
-		} else {
-			movieName = cleanName(fileName);
-			isFallback = true;
-			// Fallback ke config jika filePath tidak ada
-			ids = { imdbID: config.imdb_id.trim() || null, malID: config.mal_id.trim() || null };
-		}
+            if (config.customText && config.customText.trim()) {
+                movieName = config.customText;
+            } else if (metaTitle && metaTitle.length <= 128) {
+                movieName = metaTitle;
+            } else {
+                movieName = cleanName(fileName);
+                isFallback = true;
+            }
+        } else {
+            movieName = cleanName(fileName);
+            isFallback = true;
+            // Fallback ke config jika filePath tidak ada
+            ids = { imdbID: config.imdb_id.trim() || null, malID: config.mal_id.trim() || null };
+        }
 
         const cleanedMovieName = cleanName(movieName);
 
@@ -214,7 +216,7 @@ const getMpcStatus = async () => {
             malID: ids.malID,
             releaseDate,
             isFallback,
-			filePath
+            filePath
         };
     } catch (error) {
         console.error('Error fetching MPC status:', error);
@@ -256,8 +258,7 @@ const resetAllCaches = () => {
 };
 
 // Fungsi untuk memperbarui status Discord Rich Presence
-async function updatePresence() {
-    const mpcStatus = await getMpcStatus();
+async function updatePresence(mpcStatus) {
 
     if (mpcStatus) {
         let showTitle = null; // Default ke fileName
@@ -270,36 +271,36 @@ async function updatePresence() {
         } else {
             largeImageKey = 'https://i.imgur.com/MwZqLN8.png';
         }
-		
-		// CHANGED: Gunakan fetchTitles untuk mendapatkan episodeTitle dan releaseDate
+
+        // CHANGED: Gunakan fetchTitles untuk mendapatkan episodeTitle dan releaseDate
         let episodeTitle = mpcStatus.title; // Prioritas 1: dari metadata
-		let releaseDate = mpcStatus.releaseDate || '';
-		let needsFetchTitles = mpcStatus.fileName !== lastFetchedTitlesFileName;
-		if (needsFetchTitles) {
-			const titles = await fetchTitles(mpcStatus.fileName, mpcStatus.filePath || null);
-			fetchedEpisodeTitle = titles.episodeTitle;
-			fetchedReleaseDate = titles.releaseDate;
-			cachedFetchedTitles = { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate };
-			lastFetchedTitlesFileName = mpcStatus.fileName;
-			console.log(`Updated titles cache: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
-		} else if (cachedFetchedTitles) {
-			fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
-			fetchedReleaseDate = cachedFetchedTitles.releaseDate;
-			console.log(`Using cached titles: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
-		}
-		if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
-			episodeTitle = fetchedEpisodeTitle; // Prioritas 2: dari titles.txt
-			releaseDate = fetchedReleaseDate || releaseDate;
-		}
+        let releaseDate = mpcStatus.releaseDate || '';
+        let needsFetchTitles = mpcStatus.fileName !== lastFetchedTitlesFileName;
+        if (needsFetchTitles) {
+            const titles = await fetchTitles(mpcStatus.fileName, mpcStatus.filePath || null);
+            fetchedEpisodeTitle = titles.episodeTitle;
+            fetchedReleaseDate = titles.releaseDate;
+            cachedFetchedTitles = { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate };
+            lastFetchedTitlesFileName = mpcStatus.fileName;
+            console.log(`Updated titles cache: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
+        } else if (cachedFetchedTitles) {
+            fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
+            fetchedReleaseDate = cachedFetchedTitles.releaseDate;
+            console.log(`Using cached titles: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
+        }
+        if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
+            episodeTitle = fetchedEpisodeTitle; // Prioritas 2: dari titles.txt
+            releaseDate = fetchedReleaseDate || releaseDate;
+        }
 
         // Logic caching untuk fetchPoster
-        const needsFetch = 
-			mpcStatus.fileName !== lastFetchedFileName ||
-			mpcStatus.imdbID !== lastImdbId ||
-			mpcStatus.malID !== lastMalId ||
-			config.imdb_id !== lastConfigImdbId ||
-			config.mal_id !== lastConfigMalId ||
-			config.autoPoster !== lastAutoPoster;
+        const needsFetch =
+        mpcStatus.fileName !== lastFetchedFileName ||
+        mpcStatus.imdbID !== lastImdbId ||
+        mpcStatus.malID !== lastMalId ||
+        config.imdb_id !== lastConfigImdbId ||
+        config.mal_id !== lastConfigMalId ||
+        config.autoPoster !== lastAutoPoster;
 
         if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
             const titleForSearch = cleanName(mpcStatus.fileName);
@@ -319,27 +320,27 @@ async function updatePresence() {
                     largeImageKey = result.poster || largeImageKey;
                 }
 
-			// Update cache
-			cachedPoster = result.poster;
-			cachedShowTitle = result.showTitle;
-			lastFetchedFileName = mpcStatus.fileName;
-			lastImdbId = mpcStatus.imdbID;
-			lastMalId = mpcStatus.malID;
-			lastConfigImdbId = config.imdb_id;
-			lastConfigMalId = config.mal_id;
-			lastAutoPoster = config.autoPoster;
+                // Update cache
+                cachedPoster = result.poster;
+                cachedShowTitle = result.showTitle;
+                lastFetchedFileName = mpcStatus.fileName;
+                lastImdbId = mpcStatus.imdbID;
+                lastMalId = mpcStatus.malID;
+                lastConfigImdbId = config.imdb_id;
+                lastConfigMalId = config.mal_id;
+                lastAutoPoster = config.autoPoster;
             }
-		} else if (!needsFetch) {
-			// Gunakan cache jika tidak perlu fetch ulang
-			if (cachedShowTitle) {
-				showTitle = cachedShowTitle;
-				console.log(`Using cached showTitle: "${showTitle}"`);
-			}
-			if (!customImageURL && cachedPoster) {
-				largeImageKey = cachedPoster;
-				console.log(`Using cached poster: "${largeImageKey}"`);
-			}
-		} else {
+        } else if (!needsFetch) {
+            // Gunakan cache jika tidak perlu fetch ulang
+            if (cachedShowTitle) {
+                showTitle = cachedShowTitle;
+                console.log(`Using cached showTitle: "${showTitle}"`);
+            }
+            if (!customImageURL && cachedPoster) {
+                largeImageKey = cachedPoster;
+                console.log(`Using cached poster: "${largeImageKey}"`);
+            }
+        } else {
             console.log(`No IMDb or MAL ID found in video or config, and autoPoster is disabled. Using default title: "${showTitle}"`);
         }
 
@@ -360,8 +361,8 @@ async function updatePresence() {
             }
         } else {
             const smolIcon = mpcStatus.isPlaying
-                ? "https://i.imgur.com/8IYhOc2.png"
-                : "https://i.imgur.com/CCg9fxf.png";
+            ? "https://i.imgur.com/8IYhOc2.png"
+            : "https://i.imgur.com/CCg9fxf.png";
             const smolText = mpcStatus.isPlaying ? "Playing" : "Paused";
 
             // State text tetap seperti sebelumnya
@@ -477,7 +478,7 @@ async function updatePresence() {
         } catch (err) {
             console.error('Error clearing activity:', err);
         }
-		resetAllCaches();
+        resetAllCaches();
     }
 }
 
@@ -503,7 +504,45 @@ function convertTimeToSeconds(time) {
 // Koneksi ke Discord saat pertama kali
 client.on('ready', () => {
     console.log(`Connected to Discord with clientId: ${mpcId}`);
-    setInterval(updatePresence, 5000); // Update setiap 15 detik
+    presenceInterval = setInterval(async () => {
+
+        const status = await getMpcStatus();
+
+        // 🔴 Jika MPC mati / tidak bisa diakses
+        if (!status) {
+            if (lastPlaybackState !== 'offline') {
+                console.log("MPC not found → clearing presence");
+                lastPlaybackState = 'offline';
+                try {
+                    client.user?.clearActivity();
+                } catch (err) {
+                    console.error('Error clearing activity:', err);
+                }
+                resetAllCaches();
+            }
+            return;
+        }
+
+        const currentState =
+        status.isPlaying ? 'playing' :
+        status.isPaused ? 'paused' :
+        status.isStopped ? 'stopped' :
+        null;
+
+        // 🟢 PLAYING → selalu update
+        if (currentState === 'playing') {
+            lastPlaybackState = currentState;
+            await updatePresence(status);
+            return;
+        }
+
+        // 🟡 PAUSED / STOPPED → update hanya jika berubah
+        if (currentState !== lastPlaybackState) {
+            lastPlaybackState = currentState;
+            await updatePresence(status);
+        }
+
+    }, 5000); // Update setiap 15 detik
 });
 
 client.on('disconnected', () => {

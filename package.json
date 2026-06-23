@@ -9,10 +9,10 @@
     "list": "pm2 list"
   },
   "dependencies": {
-    "@ctrl/video-filename-parser": "^5.4.0",
-    "@xhayper/discord-rpc": "^1.3.0",
-    "axios": "^1.11.0",
-    "fluent-ffmpeg": "^2.1.3",
-    "pm2": "^6.0.10"
+    "@ctrl/video-filename-parser": "latest",
+    "@xhayper/discord-rpc": "latest",
+    "axios": "latest",
+    "fluent-ffmpeg": "latest",
+    "pm2": "latest"
   }
 }

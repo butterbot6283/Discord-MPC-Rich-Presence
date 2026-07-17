@@ -1,89 +1,62 @@
 const fs = require('fs');
 const readline = require('readline');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
 
-const configFile = path.join(__dirname, 'config.js');
+const configFile = path.join(__dirname, 'config.json');
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
 
-// Async input wrapper
+// Fungsi untuk menerima input dari console (promisify)
 const question = (query) => new Promise(resolve => rl.question(query, resolve));
 
-// Clear console
+// Fungsi untuk membersihkan layar console
 function clearConsole() {
     process.stdout.write('\x1Bc');
 }
 
-// Read config.js content
+// Kamus penjelasan untuk setiap konfigurasi yang akan ditampilkan di menu
+const configDescriptions = {
+    'imdb_id': 'IMDb ID fallback for fetching poster and show title.',
+    'mal_id': 'MyAnimeList ID fallback for fetching poster and show title.',
+    'customText': 'Replace video title with custom text in Discord presence.',
+    'customBigText': 'Replace large image text in Discord presence.',
+    'autoPoster': 'Fetch poster by filename if true (may be inaccurate).',
+    'cleanFilename': 'Clean video filename using regex patterns if true.',
+    'customImage': 'Replace MPC logo with custom image URLs (rotates every minute).',
+    'cleanRegex': 'Custom regex patterns to clean video filename.'
+};
+
+// Membaca isi config.json untuk ditampilkan di layar utama
 function readConfig() {
-    let result = 'Current config.js:\n';
-    if (!fs.existsSync(configFile)) {
-        result += '    config.js not found!\n';
-        return result;
-    }
-
-    const content = fs.readFileSync(configFile, 'utf-8');
-    const lines = content.split('\n');
-    let inArray = false;
-    let arrayValues = [];
-    let currentKey = null;
-    let arrayComment = '';
-    lines.forEach(line => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('module.exports')) return;
-
-        const match = trimmed.match(/^(\w+):\s*(.*?)(,)?\s*(\/\/.*)?$/);
-        if (match) {
-            const key = match[1];
-            let value = match[2].trim();
-            let comment = match[4] || '';
-
-            if (key === 'customType') return; // Skip customType from output
-
-            if ((key === 'customImage' || key === 'cleanRegex') && value.startsWith('[')) {
-                inArray = true;
-                currentKey = key;
-                arrayValues = [];
-                arrayComment = comment;
-                if (value.includes(']')) {
-                    inArray = false;
-                    value = value.substring(1, value.lastIndexOf(']')).trim();
-                    arrayValues = value ? value.split(',').map(v => v.trim().replace(/['"]/g, '')) : [];
-                    result += `    ${key}: [${arrayValues.join(', ')}] ${comment}\n`;
+    if (!fs.existsSync(configFile)) return 'Current config: Not found!\n';
+    try {
+        const data = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+        let result = 'Current config.json:\n';
+        for (const [key, value] of Object.entries(data)) {
+            if (Array.isArray(value)) {
+                // Menghindari tampilan kosong saat hanya tersisa 1 elemen string kosong
+                if (value.length === 0 || (value.length === 1 && value[0] === "")) {
+                    result += `    ${key}: ['']\n`;
+                } else {
+                    result += `    ${key}: [${value.map(v => `'${v}'`).join(', ')}]\n`;
                 }
-                return;
-            }
-
-            result += `    ${key}: ${value} ${comment}\n`;
-        } else if (inArray) {
-            if (trimmed.startsWith(']')) {
-                inArray = false;
-                if (trimmed.includes('//')) {
-                    arrayComment = trimmed.substring(trimmed.indexOf('//')).trim();
-                }
-                result += `    ${currentKey}: [${arrayValues.join(', ')}] ${arrayComment}\n`;
-                return;
-            }
-            const value = trimmed.replace(/,$/, '').trim();
-            if (value || value === '') {
-                arrayValues.push(value.replace(/['"]/g, ''));
+            } else {
+                result += `    ${key}: ${value === '' ? "''" : value}\n`;
             }
         }
-    });
-
-    if (result === 'Current config.js:\n') {
-        result += '    [Empty or invalid format]\n';
+        return result;
+    } catch (e) {
+        return 'Error parsing config.json\n';
     }
-    return result;
 }
 
-// Check index.js status using pm2
+// Mengecek status index.js yang berjalan di PM2
 function getIndexStatus() {
     try {
-        const output = execSync('npx pm2 jlist', { encoding: 'utf-8' });
+        const output = execSync('npx --silent pm2 jlist', { encoding: 'utf-8' });
         const processes = JSON.parse(output);
         const indexProcess = processes.find(proc => proc.name === 'index' && proc.pm2_env.status === 'online');
         return indexProcess ? 'Running' : 'Stopped';
@@ -92,29 +65,23 @@ function getIndexStatus() {
     }
 }
 
-// Get PM2 table (compact)
+// Mendapatkan tabel ringkas status PM2
 function getPm2Table() {
     try {
-        const output = execSync('npx pm2 jlist', { encoding: 'utf-8' });
+        const output = execSync('npx --silent pm2 jlist', { encoding: 'utf-8' });
         const processes = JSON.parse(output);
-
-        if (processes.length === 0) {
-            return '[No PM2 processes found]';
-        }
+        if (processes.length === 0) return '[No PM2 processes found]';
 
         let table = '┌───────────────┬───────────┬───────┬─────────┐\n';
         table += '│ name          │ status    │ cpu   │ memory  │\n';
         table += '├───────────────┼───────────┼───────┼─────────┤\n';
-
         processes.forEach(proc => {
             const name = proc.name.padEnd(13, ' ');
             const status = proc.pm2_env.status.padEnd(9, ' ');
             const cpu = (proc.monit.cpu + '%').padEnd(5, ' ');
             const memory = (Math.round(proc.monit.memory / 1024 / 1024 * 10) / 10 + 'mb').padEnd(7, ' ');
-
             table += `│ ${name} │ ${status} │ ${cpu} │ ${memory} │\n`;
         });
-
         table += '└───────────────┴───────────┴───────┴─────────┘';
         return table;
     } catch (err) {
@@ -122,115 +89,73 @@ function getPm2Table() {
     }
 }
 
-// Run PM2 command
+// Mengeksekusi perintah start/stop PM2 secara rahasia (silent)
 function runNpmCommand(command) {
     try {
         if (command === 'start') {
-            execSync(`cd "${__dirname}" && npx pm2 start index.js --name index`, { stdio: 'inherit' });
+            execSync(`cd "${__dirname}" && npx --silent pm2 start index.js --name index`, { stdio: 'inherit' });
         } else if (command === 'stop') {
-            execSync(`cd "${__dirname}" && npx pm2 stop index`, { stdio: 'inherit' });
-            execSync(`cd "${__dirname}" && npx pm2 delete index`, { stdio: 'inherit' });
+            execSync(`cd "${__dirname}" && npx --silent pm2 stop index`, { stdio: 'inherit' });
+            execSync(`cd "${__dirname}" && npx --silent pm2 delete index`, { stdio: 'inherit' });
         }
     } catch (err) {
-        console.log(`Failed to run pm2 ${command}: ${err.message}`);
-        throw err;
+        console.log(`Failed to run pm2 ${command}`);
     }
 }
 
-// Edit config.js
+// Fitur untuk melihat log PM2 secara live
+async function viewLiveLogs() {
+    clearConsole();
+    console.log('==================================================');
+    console.log('🟢 STREAMING LIVE LOG PM2 (ACTIVE)');
+    console.log('==================================================');
+    console.log('Press [ENTER] at any time to stop logging and return to menu.\n');
+
+    // Menyesuaikan command npx untuk Windows vs Linux
+    const pm2Cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const logProcess = spawn(pm2Cmd, ['--silent', 'pm2', 'logs', 'index', '--raw', '--lines', '35'], {
+        stdio: ['ignore', 'inherit', 'inherit']
+    });
+
+    // Menunggu pengguna menekan Enter
+    await question('');
+    logProcess.kill();
+}
+
+// Fungsi utama untuk memodifikasi objek di dalam config.json
 function editConfig(key, newValue, index = null) {
     if (!fs.existsSync(configFile)) {
-        console.log("config.js not found!");
+        console.log("config.json not found!");
         return;
     }
+    try {
+        let configData = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
 
-    let lines = fs.readFileSync(configFile, 'utf-8').split('\n');
-    let inArray = false;
-    let arrayStart = -1;
-    let found = false;
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i].replace(/\r$/, '');
-        const match = line.match(/^\s*(\w+):\s*(.*?)(,)?\s*(\/\/.*)?$/);
-        if (match) {
-            const currentKey = match[1];
-            let currentValue = match[2].trim();
-            let comment = match[4] || '';
-            if ((key === 'customImage' || key === 'cleanRegex') && currentKey === key && currentValue.startsWith('[')) {
-                inArray = true;
-                arrayStart = i;
-                let arrayLines = [lines[i]];
-                i++;
-                while (i < lines.length && !lines[i].trim().startsWith(']')) {
-                    arrayLines.push(lines[i]);
-                    i++;
-                }
-                arrayLines.push(lines[i]);
-
-                let values = [];
-                for (let al of arrayLines.slice(1, -1)) {
-                    let v = al.trim().replace(/,$/, '');
-                    if (v || v === '') {
-                        v = v.startsWith("'") && v.endsWith("'") ? v.slice(1, -1) : v;
-                        values.push(v);
-                    }
-                }
-
-                if (index === 'add') {
-                    values.push(newValue);
-                } else if (index === 'delete' && 0 <= parseInt(newValue) < values.length) {
-                    values.splice(parseInt(newValue), 1);
-                } else if (0 <= index < values.length) {
-                    values[index] = newValue;
-                }
-
-                arrayLines = [`    ${key}: [ //${comment.replace('//', '').trim()}`];
-                values.forEach((v, idx) => {
-                    arrayLines.push(`        '${v}'${idx < values.length - 1 ? ',' : ''}`);
-                });
-                arrayLines.push('    ],');
-                lines = [...lines.slice(0, arrayStart), ...arrayLines, ...lines.slice(i + 1)];
-                found = true;
-
-            } else if (match && currentKey === key) {
-                if (key === 'autoPoster' || key === 'cleanFilename') {
-                    newValue = newValue.toLowerCase();
-                    if (!['true', 'false'].includes(newValue)) {
-                        console.log(`Value for ${key} must be true or false!`);
-                        return;
-                    }
-                    lines[i] = `    ${key}: ${newValue}, ${comment}`;
-                } else {
-                    if (!newValue.startsWith("'") || !newValue.endsWith("'")) {
-                        newValue = `'${newValue}'`;
-                    }
-                    lines[i] = `    ${key}: ${newValue}, ${comment}`;
-                }
-                found = true;
-                break;
+        // Konversi input string menjadi boolean tulen untuk JSON
+        if (key === 'autoPoster' || key === 'cleanFilename') {
+            configData[key] = newValue === 'true';
+        } else if (Array.isArray(configData[key])) {
+            if (index === 'add') {
+                configData[key].push(newValue);
+            } else if (index === 'delete') {
+                configData[key].splice(parseInt(newValue), 1);
+            } else {
+                configData[key][index] = newValue; // Edit elemen yang sudah ada
             }
+        } else {
+            configData[key] = newValue;
         }
-    }
 
-    if (!found && key !== 'customImage' && key !== 'cleanRegex') {
-        lines.splice(lines.length - 1, 0, `    ${key}: ${newValue}, //new entry`);
+        fs.writeFileSync(configFile, JSON.stringify(configData, null, 2), 'utf-8');
+        console.log(`\n✅ Successfully updated '${key}'`);
+    } catch (e) {
+        console.log("Failed to modify config.json. Ensure the file is not corrupted.");
     }
-
-    fs.writeFileSync(configFile, lines.join('\n'), 'utf-8');
-    console.log(`Successfully edited ${key} to ${newValue}`);
 }
 
-// Main loop
+// Loop/putaran utama aplikasi CLI
 async function main() {
-    const configKeys = [
-        'imdb_id',
-        'mal_id',
-        'customText',
-        'customBigText',
-        'autoPoster',
-        'cleanFilename',
-        'customImage',
-        'cleanRegex'
-    ];
+    const configKeys = ['imdb_id', 'mal_id', 'customText', 'customBigText', 'autoPoster', 'cleanFilename', 'customImage', 'cleanRegex'];
 
     while (true) {
         clearConsole();
@@ -240,109 +165,97 @@ async function main() {
         console.log(readConfig());
         console.log('\nSelect an option:');
         console.log(`1. ${getIndexStatus() === 'Running' ? 'Stop index.js' : 'Start index.js'}`);
+        console.log(`2. View Live Log (PM2)`);
+
+        // Dinamis me-list opsi konfigurasi dari array configKeys
         configKeys.forEach((key, i) => {
-            console.log(`${i + 2}. Edit ${key}`);
+            console.log(`${i + 3}. Edit ${key}`);
         });
-        console.log('0. Exit');
-        console.log();
+        console.log('0. Exit\n');
 
         const choice = await question('Enter your choice: ');
-        if (choice === '1') {
-            try {
-                if (getIndexStatus() === 'Running') {
-                    runNpmCommand('stop');
-                    console.log('index.js stopped.');
-                } else {
-                    runNpmCommand('start');
-                    console.log('index.js started.');
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    if (getIndexStatus() !== 'Running') {
-                        console.log('Failed to start index.js! Check logs with "npx pm2 logs index" or run "node index.js" for debugging.');
-                    }
-                }
-            } catch (err) {
-                console.log('Failed to execute command! Check logs with "npx pm2 logs index".');
-            }
-            await question('Press Enter to continue...');
-        } else if (configKeys.some((_, i) => choice === String(i + 2))) {
-            const index = parseInt(choice) - 2;
-            const key = configKeys[index];
-            if (key === 'customImage' || key === 'cleanRegex') {
-                const arrayValues = [];
-                let comment = '';
-                const lines = fs.readFileSync(configFile, 'utf-8').split('\n');
-                let inArray = false;
-                for (const line of lines) {
-                    const match = line.match(/^\s*(\w+):\s*(.*?)(,)?\s*(\/\/.*)?$/);
-                    if (match && match[1] === key && match[2].startsWith('[')) {
-                        inArray = true;
-                        comment = match[4] || '';
-                        continue;
-                    }
-                    if (inArray) {
-                        if (line.trim().startsWith(']')) {
-                            inArray = false;
-                            break;
-                        }
-                        const value = line.trim().replace(/,$/, '');
-                        if (value || value === '') {
-                            arrayValues.push(value.startsWith("'") && value.endsWith("'") ? value.slice(1, -1) : value);
-                        }
-                    }
-                }
 
-                console.log(`\nSelect element for ${key}:`);
-                arrayValues.forEach((value, i) => {
-                    console.log(`${i + 1}. '${value}'`);
-                });
+        if (choice === '1') {
+            if (getIndexStatus() === 'Running') runNpmCommand('stop');
+            else runNpmCommand('start');
+            await question('Press Enter to continue...');
+        }
+        else if (choice === '2') {
+            if (getIndexStatus() !== 'Running') {
+                console.log('Script is not running.');
+                await question('Press Enter to continue...');
+            } else await viewLiveLogs();
+        }
+        else if (configKeys.some((_, i) => choice === String(i + 3))) {
+            const index = parseInt(choice) - 3;
+            const key = configKeys[index];
+
+            // Tampilkan deskripsi pengaturan yang sedang dipilih
+            console.log(`\n--- Editing: ${key} ---`);
+            console.log(`Description: ${configDescriptions[key]}`);
+
+            // Baca data config.json terbaru agar sinkron
+            let configData = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+
+            // Logika interaktif khusus untuk Array (customImage & cleanRegex)
+            if (Array.isArray(configData[key])) {
+                let arrayValues = configData[key];
+                console.log(`\nCurrent elements for ${key}:`);
+                arrayValues.forEach((val, i) => console.log(`${i + 1}. '${val}'`));
                 console.log(`${arrayValues.length + 1}. Add new element`);
-                if (arrayValues.length > 1) {
-                    console.log(`${arrayValues.length + 2}. Delete element`);
+
+                // Safety check: Opsi hapus hanya muncul & bisa diakses jika elemen lebih dari 1
+                const canDelete = arrayValues.length > 1;
+                if (canDelete) {
+                    console.log(`${arrayValues.length + 2}. Delete an element`);
                 }
                 console.log('0. Back');
-                const subChoice = await question('Enter your choice: ');
 
+                const subChoice = await question('Enter your choice: ');
                 if (subChoice === '0') {
                     continue;
                 } else if (subChoice === String(arrayValues.length + 1)) {
-                    const newValue = await question(`Enter new value for ${key} (leave blank for empty element): `);
-                    editConfig(key, newValue, 'add');
-                } else if (arrayValues.length > 1 && subChoice === String(arrayValues.length + 2)) {
+                    const newVal = await question(`Enter new value to add: `);
+                    editConfig(key, newVal, 'add');
+                } else if (canDelete && subChoice === String(arrayValues.length + 2)) {
                     const delIndex = await question(`Enter element number to delete (1-${arrayValues.length}): `);
-                    if (delIndex.match(/^\d+$/) && 1 <= parseInt(delIndex) && parseInt(delIndex) <= arrayValues.length) {
-                        editConfig(key, String(parseInt(delIndex) - 1), 'delete');
+                    const parsedDel = parseInt(delIndex);
+                    if (!isNaN(parsedDel) && parsedDel >= 1 && parsedDel <= arrayValues.length) {
+                        editConfig(key, String(parsedDel - 1), 'delete');
+                    } else {
+                        console.log('Invalid element number!');
+                    }
+                } else {
+                    const targetIndex = parseInt(subChoice);
+                    if (!isNaN(targetIndex) && targetIndex >= 1 && targetIndex <= arrayValues.length) {
+                        const newVal = await question(`Enter new value for element #${targetIndex} (currently '${arrayValues[targetIndex - 1]}'): `);
+                        editConfig(key, newVal, targetIndex - 1);
                     } else {
                         console.log('Invalid choice!');
-                        await question('Press Enter to continue...');
                     }
-                } else if (subChoice.match(/^\d+$/) && 1 <= parseInt(subChoice) && parseInt(subChoice) <= arrayValues.length) {
-                    const newValue = await question(`Enter new value for '${arrayValues[parseInt(subChoice) - 1]}' (leave blank for empty): `);
-                    editConfig(key, newValue, parseInt(subChoice) - 1);
-                } else {
-                    console.log('Invalid choice!');
-                    await question('Press Enter to continue...');
                 }
-            } else {
+            }
+            // Logika interaktif untuk String dan Boolean biasa
+            else {
                 let prompt = `Enter new value for ${key}`;
                 if (key === 'autoPoster' || key === 'cleanFilename') {
-                    prompt += ' (true/false): ';
-                    const newValue = (await question(prompt)).toLowerCase();
-                    if (!['true', 'false'].includes(newValue)) {
-                        console.log(`Value for ${key} must be true or false!`);
-                        await question('Press Enter to continue...');
-                        continue;
+                    const newVal = (await question(`${prompt} (true/false): `)).toLowerCase();
+                    if (['true', 'false'].includes(newVal)) {
+                        editConfig(key, newVal);
+                    } else {
+                        console.log("Invalid input! Value must be 'true' or 'false'.");
                     }
-                    editConfig(key, newValue);
                 } else {
-                    prompt += ': ';
-                    const newValue = await question(prompt);
-                    editConfig(key, newValue);
+                    const newVal = await question(`${prompt}: `);
+                    editConfig(key, newVal);
                 }
-                await question('Press Enter to continue...');
             }
-        } else if (choice === '0') {
+            await question('Press Enter to continue...');
+        }
+        else if (choice === '0') {
             break;
-        } else {
+        }
+        else {
             console.log('Invalid choice!');
             await question('Press Enter to continue...');
         }
@@ -350,8 +263,5 @@ async function main() {
     rl.close();
 }
 
-// Run main
-main().catch(err => {
-    console.error('Error:', err);
-    rl.close();
-});
+// Menangkap unhandled error agar script tidak force close tanpa jejak
+main().catch(err => { console.error('Error:', err); rl.close(); });

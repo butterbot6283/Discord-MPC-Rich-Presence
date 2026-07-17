@@ -1,0 +1,15 @@
+{
+  "imdb_id": "",
+  "mal_id": "",
+  "customText": "",
+  "customBigText": "",
+  "autoPoster": false,
+  "cleanFilename": false,
+  "customImage": [
+    ""
+  ],
+  "cleanRegex": [
+    "\\b(720p|1080p|480p|BluRay|BRRip|Webrip|WEB-DL|WEBDL|HDRip|x264|x265|HEVC|HDTV|DVDRip|AAC)\\b\\s*",
+    "10bit-Pahe.in"
+  ]
+}

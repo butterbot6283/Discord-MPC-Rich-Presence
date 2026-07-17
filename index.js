@@ -3,79 +3,98 @@ const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
 const fetchPoster = require('./poster');
 const { fetchTitles, fetchIdsFromTxt } = require('./titles');
+const fs = require('fs');
 const path = require('path');
-let config = require('./config');
+const { execSync } = require('child_process');
 
-// clientId default (selalu pakai ini, tidak ada custom lagi)
+let config = {};
+const configPath = path.join(__dirname, 'config.json');
+
 const mpcId = '1298018501814128796';
-
-// Fungsi untuk membuat instance RPC Client
 const createClient = () => new RPC.Client({ clientId: mpcId });
-
-// Inisialisasi client dengan mpcId
 let client = createClient();
-let lastPlaybackState = 'offline'; // 'playing' | 'paused' | 'stopped'
+let lastPlaybackState = 'offline';
 let presenceInterval = null;
 
-//config reload
-const reloadConfig = () => {
-    delete require.cache[require.resolve('./config')];
-    config = require('./config');
-    console.log("⚙️ Config reloaded:", config);
-};
+// ==========================================
+// VARIABLE TRACKING & CLEAN LOGGING SYSTEM
+// ==========================================
+let updateEventCount = 0; // Menghitung jumlah event/update, bukan baris teks
+let lastLoggedFileName = null;
+let lastLoggedState = null;
+let mpcOfflineLogged = false;
 
+// Fungsi sapu jagat untuk mengatasi gambar terminal Linux (fastfetch/sixel/kitty)
+function deepClearConsole() {
+    try {
+        if (process.platform === 'linux') {
+            // 1. Tembakkan escape code Kitty Image Protocol (mematikan gambar yang melayang)
+            process.stdout.write('\x1b_Ga=d\x1b\\');
+            // 2. Eksekusi perintah 'clear' bawaan Linux agar bersih sampai ke akar
+            execSync('clear', { stdio: 'inherit' });
+        } else {
+            console.clear();
+        }
+    } catch (e) {
+        console.clear(); // Fallback jika gagal
+    }
+}
+
+// Cek dan bersihkan console SEBELUM nge-print log baru
+function checkClearConsole() {
+    if (updateEventCount >= 10) {
+        deepClearConsole();
+        console.log("🧹 Console dibersihkan otomatis...");
+        updateEventCount = 0;
+    }
+    updateEventCount++;
+}
+
+const reloadConfig = () => {
+    try {
+        if (fs.existsSync(configPath)) {
+            const fileData = fs.readFileSync(configPath, 'utf-8');
+            config = JSON.parse(fileData);
+        }
+    } catch (e) {
+        console.error("Kesalahan membaca config.json:", e.message);
+    }
+};
+// Panggil sekali di awal untuk memuat config pertama kali
+reloadConfig();
 setInterval(reloadConfig, 15000);
 
-// Fungsi untuk membersihkan teks dalam kurung siku [ ] dari nama file
 function cleanName(name, isMovieName = false) {
     let cleanedName = name;
-
-    if (!isMovieName && config.cleanFilename !== false) { // Periksa cleanFilename
-        // Regex default
-        cleanedName = cleanedName
-        .replace(/\[.*?\]/g, '');   // Hapus [tags]
-
-        // Terapkan regex kustom dari config.cleanRegex
+    if (!isMovieName && config.cleanFilename !== false) {
+        cleanedName = cleanedName.replace(/\[.*?\]/g, '');
         if (Array.isArray(config.cleanRegex) && config.cleanRegex.length > 0) {
             config.cleanRegex.forEach(regex => {
                 try {
                     const re = new RegExp(regex, 'gi');
                     cleanedName = cleanedName.replace(re, '');
-                    console.log(`Applied custom regex "${regex}" to clean name: ${cleanedName}`);
-                } catch (err) {
-                    console.error(`Invalid regex in cleanRegex: "${regex}"`, err);
-                }
+                } catch (err) {}
             });
         }
     }
-
     cleanedName = cleanedName
-    //.replace(/[\._\-]/g, ' ') // Ganti titik, underscore, dan tanda hubung dengan spasi [nonaktif]
-    //.replace(/\(.*?\)/g, '') // Hapus teks dalam kurung biasa [nonaktif]
-    .replace(/\.{2,}/g, '.')   // Ganti titik ganda dengan satu titik
-    .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1') // Hilangkan spasi sebelum ekstensi
-    .replace(/\s{2,}/g, ' ') // Ganti spasi ganda dengan satu spasi
+    .replace(/\.{2,}/g, '.')
+    .replace(/\s+\.(mkv|mp4|avi|flv)/, '.$1')
+    .replace(/\s{2,}/g, ' ')
     .trim();
-
-    console.log(`Cleaned name: ${cleanedName}`);
     return cleanedName;
 }
 
-// Fungsi untuk mendapatkan nama fallback berdasarkan ekstensi file
 const getFallbackName = (filePath) => {
     const extensionMatch = filePath.match(/\.([a-zA-Z0-9]+)$/);
     const extension = extensionMatch ? extensionMatch[1].toUpperCase() : 'unknown';
     return `${extension} Video`;
 };
 
-// Variabel cache untuk metadata dari ffprobe
 let lastFilePath = null;
-let cachedMetadata = null; // { metaTitle, imdbID, malID, releaseDate, isError }
-
-// Variabel untuk menyimpan indeks gambar saat ini
+let cachedMetadata = null;
 let currentImageIndex = 0;
 
-// Fungsi untuk mendapatkan custom image
 const getCustomImage = () => {
     if (Array.isArray(config.customImage) && config.customImage.some(image => image.trim())) {
         let image = config.customImage[currentImageIndex].trim() || null;
@@ -84,19 +103,10 @@ const getCustomImage = () => {
     }
     return null;
 };
-
 let customImageURL = getCustomImage();
+setInterval(() => { customImageURL = getCustomImage(); }, 60000);
+const getCustomBigText = () => config.customBigText.trim() || null;
 
-setInterval(() => {
-    customImageURL = getCustomImage();
-}, 60000);
-
-// Fungsi untuk mendapatkan custom big text
-const getCustomBigText = () => {
-    return config.customBigText.trim() || null;
-};
-
-// Fungsi untuk mendapatkan status dari MPC melalui Web Interface
 let cleanedFileName = '';
 const getMpcStatus = async () => {
     try {
@@ -104,30 +114,28 @@ const getMpcStatus = async () => {
         const data = response.data;
 
         const fileNameMatch = data.match(/<p id="file">(.+?)<\/p>/);
-        let fileName = fileNameMatch ? fileNameMatch[1].trim() : 'Unknown File';
-        cleanedFileName = cleanName(fileName);
+        let rawFileName = fileNameMatch ? fileNameMatch[1].trim() : 'Unknown File';
+        cleanedFileName = cleanName(rawFileName);
 
         const filePathMatch = data.match(/<p id="filepath">(.+?)<\/p>/);
         const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
-        console.log(`Extracted filePath: ${filePath}`);
 
         let ids = { imdbID: null, malID: null };
+        let debugIds = { metadata: {imdb: null, mal: null}, txt: {imdb: null, mal: null}, config: {imdb: config.imdb_id, mal: config.mal_id} };
+
         let releaseDate = null;
         let movieName = null;
         let isFallback = false;
 
         if (filePath) {
             if (filePath !== lastFilePath || !cachedMetadata) {
-                await new Promise((resolve, reject) => {
+                await new Promise((resolve) => {
                     ffmpeg.ffprobe(filePath, (err, metadata) => {
                         if (err) {
-                            console.error('Error fetching metadata:', err);
                             cachedMetadata = { isError: true };
                             lastFilePath = filePath;
-                            resolve();
-                            return;
+                            return resolve();
                         }
-
                         const tags = metadata.format.tags || {};
                         cachedMetadata = {
                             metaTitle: tags.title,
@@ -142,425 +150,344 @@ const getMpcStatus = async () => {
                 });
             }
 
-            // Prioritas 1: ID dari metadata
             if (cachedMetadata && !cachedMetadata.isError) {
                 ids = { imdbID: cachedMetadata.imdbID, malID: cachedMetadata.malID };
-                console.log(`IDs from metadata: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+                debugIds.metadata = { imdb: ids.imdbID, mal: ids.malID };
             }
-
-            // Prioritas 2: ID dari txt di direktori video, jika metadata null
             if (!ids.imdbID || !ids.malID) {
                 const videoDir = path.dirname(filePath);
                 const txtIds = fetchIdsFromTxt(videoDir);
-                if (txtIds.imdbID && !ids.imdbID) {
-                    ids.imdbID = txtIds.imdbID;
-                }
-                if (txtIds.malID && !ids.malID) {
-                    ids.malID = txtIds.malID;
-                }
-                console.log(`IDs from txt: IMDb=${txtIds.imdbID}, MAL=${txtIds.malID}`);
+                if (txtIds.imdbID && !ids.imdbID) ids.imdbID = txtIds.imdbID;
+                if (txtIds.malID && !ids.malID) ids.malID = txtIds.malID;
+                debugIds.txt = { imdb: txtIds.imdbID, mal: txtIds.malID };
             }
-
-            // Prioritas 3: ID dari config, jika txt/metadata null
-            if (!ids.imdbID) {
-                ids.imdbID = config.imdb_id.trim() || null;
-            }
-            if (!ids.malID) {
-                ids.malID = config.mal_id.trim() || null;
-            }
-            console.log(`Final IDs: IMDb=${ids.imdbID}, MAL=${ids.malID}`);
+            if (!ids.imdbID) ids.imdbID = config.imdb_id.trim() || null;
+            if (!ids.malID) ids.malID = config.mal_id.trim() || null;
 
             const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
             releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
 
-            if (config.customText && config.customText.trim()) {
-                movieName = config.customText;
-            } else if (metaTitle && metaTitle.length <= 128) {
-                movieName = metaTitle;
-            } else {
-                movieName = cleanName(fileName);
-                isFallback = true;
-            }
+            if (config.customText && config.customText.trim()) movieName = config.customText;
+            else if (metaTitle && metaTitle.length <= 128) movieName = metaTitle;
+            else { movieName = cleanedFileName; isFallback = true; }
         } else {
-            movieName = cleanName(fileName);
-            isFallback = true;
-            // Fallback ke config jika filePath tidak ada
+            movieName = cleanedFileName; isFallback = true;
             ids = { imdbID: config.imdb_id.trim() || null, malID: config.mal_id.trim() || null };
         }
 
         const cleanedMovieName = cleanName(movieName);
-
         const currentTimeMatch = data.match(/(\d{2}:\d{2}:\d{2})/g);
         const currentTime = currentTimeMatch ? currentTimeMatch[0] : '00:00:00';
         const totalTime = currentTimeMatch ? currentTimeMatch[1] : '00:00:00';
-
-        const currentSeconds = convertTimeToSeconds(currentTime);
-        const totalSeconds = convertTimeToSeconds(totalTime);
 
         const isPlaying = /<p id="state">2<\/p>/.test(data);
         const isPaused = /<p id="state">1<\/p>/.test(data);
         const isStopped = /<p id="state">-1<\/p>/.test(data);
 
-        const bigText = releaseDate || getCustomBigText();
-
         return {
+            rawFileName,
             fileName: cleanedFileName,
             title: cleanedMovieName,
-            position: currentSeconds,
-            duration: totalSeconds,
-            isPlaying: isPlaying,
-            isPaused: isPaused,
-            isStopped: isStopped,
-            bigText: bigText,
-            imdbID: ids.imdbID,
-            malID: ids.malID,
-            releaseDate,
-            isFallback,
-            filePath
+            position: convertTimeToSeconds(currentTime),
+            duration: convertTimeToSeconds(totalTime),
+            isPlaying, isPaused, isStopped,
+            bigText: releaseDate || getCustomBigText(),
+            imdbID: ids.imdbID, malID: ids.malID,
+            debugIds, releaseDate, isFallback, filePath
         };
     } catch (error) {
-        console.error('Error fetching MPC status:', error);
+        if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
+            return { isOffline: true };
+        }
         return null;
     }
 };
 
-// Cache variables for fetchPoster
-let cachedPoster = null;
-let cachedShowTitle = null;
-let lastFetchedFileName = null;
-let lastImdbId = null;
-let lastMalId = null;
-let lastConfigImdbId = null;
-let lastConfigMalId = null;
-let lastAutoPoster = config.autoPoster;
+let cachedPoster = null, cachedShowTitle = null, lastFetchedFileName = null;
+let lastImdbId = null, lastMalId = null, lastConfigImdbId = null, lastConfigMalId = null, lastAutoPoster = config.autoPoster;
+let lastFetchedTitlesFileName = null, cachedFetchedTitles = null;
 
-// Cache variables for fetchTitles
-let lastFetchedTitlesFileName = null;
-let cachedFetchedTitles = null; // { episodeTitle, releaseDate }
-let lastTitlesMtime = null; // Cache untuk timestamp modifikasi titles.txt
-let lastTitlesSeasonMtime = null; // Cache untuk timestamp modifikasi titles_sX.txt
-
-// Fungsi reset semua cache
 const resetAllCaches = () => {
-    cachedMetadata = null;
-    lastFilePath = null;
-    cachedFetchedTitles = null;
-    lastFetchedTitlesFileName = null;
-    cachedPoster = null;
-    cachedShowTitle = null;
-    lastFetchedFileName = null;
-    lastImdbId = null;
-    lastMalId = null;
-    lastConfigImdbId = null;
-    lastConfigMalId = null;
-    lastAutoPoster = null;
-    console.log('All caches reset due to MPC not found or closed.');
+    cachedMetadata = null; lastFilePath = null; cachedFetchedTitles = null;
+    lastFetchedTitlesFileName = null; cachedPoster = null; cachedShowTitle = null;
+    lastFetchedFileName = null; lastImdbId = null; lastMalId = null;
+    lastConfigImdbId = null; lastConfigMalId = null; lastAutoPoster = null;
 };
 
-// Fungsi untuk memperbarui status Discord Rich Presence
 async function updatePresence(mpcStatus) {
+    if (!mpcStatus) return;
 
-    if (mpcStatus) {
-        let showTitle = null; // Default ke fileName
-        let largeImageKey;
+    let showTitle = null;
+    let largeImageKey = customImageURL ? customImageURL : 'https://i.imgur.com/MwZqLN8.png';
+    let episodeTitle = mpcStatus.title;
+    let releaseDate = mpcStatus.releaseDate || '';
 
-        // Cek customImage dari config
-        if (customImageURL) {
-            largeImageKey = customImageURL;
-            console.log(`Using customImage: ${largeImageKey}`);
-        } else {
-            largeImageKey = 'https://i.imgur.com/MwZqLN8.png';
+    const isNewMedia = (mpcStatus.rawFileName !== lastFetchedTitlesFileName);
+    let fetchedEpisodeTitle = null;
+    let fetchedReleaseDate = null;
+
+    if (isNewMedia) {
+        const titles = await fetchTitles(mpcStatus.fileName, mpcStatus.filePath || null);
+        cachedFetchedTitles = titles;
+        fetchedEpisodeTitle = titles.episodeTitle;
+        fetchedReleaseDate = titles.releaseDate;
+        lastFetchedTitlesFileName = mpcStatus.rawFileName;
+    } else if (cachedFetchedTitles) {
+        fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
+        fetchedReleaseDate = cachedFetchedTitles.releaseDate;
+    }
+
+    if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
+        episodeTitle = fetchedEpisodeTitle;
+        releaseDate = fetchedReleaseDate || releaseDate;
+    }
+
+    const needsFetch = isNewMedia || mpcStatus.imdbID !== lastImdbId || mpcStatus.malID !== lastMalId ||
+    config.imdb_id !== lastConfigImdbId || config.mal_id !== lastConfigMalId || config.autoPoster !== lastAutoPoster;
+
+    if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
+        const result = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, cleanName(mpcStatus.rawFileName));
+        if (!result.retry) {
+            if (result.showTitle) showTitle = result.showTitle;
+            if (!customImageURL) largeImageKey = result.poster || largeImageKey;
+
+            cachedPoster = result.poster;
+            cachedShowTitle = result.showTitle;
+            lastFetchedFileName = mpcStatus.rawFileName;
+            lastImdbId = mpcStatus.imdbID;
+            lastMalId = mpcStatus.malID;
+            lastConfigImdbId = config.imdb_id;
+            lastConfigMalId = config.mal_id;
+            lastAutoPoster = config.autoPoster;
         }
+    } else if (!needsFetch) {
+        if (cachedShowTitle) showTitle = cachedShowTitle;
+        if (!customImageURL && cachedPoster) largeImageKey = cachedPoster;
+    }
 
-        // CHANGED: Gunakan fetchTitles untuk mendapatkan episodeTitle dan releaseDate
-        let episodeTitle = mpcStatus.title; // Prioritas 1: dari metadata
-        let releaseDate = mpcStatus.releaseDate || '';
-        let needsFetchTitles = mpcStatus.fileName !== lastFetchedTitlesFileName;
-        if (needsFetchTitles) {
-            const titles = await fetchTitles(mpcStatus.fileName, mpcStatus.filePath || null);
-            fetchedEpisodeTitle = titles.episodeTitle;
-            fetchedReleaseDate = titles.releaseDate;
-            cachedFetchedTitles = { episodeTitle: fetchedEpisodeTitle, releaseDate: fetchedReleaseDate };
-            lastFetchedTitlesFileName = mpcStatus.fileName;
-            console.log(`Updated titles cache: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
-        } else if (cachedFetchedTitles) {
-            fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
-            fetchedReleaseDate = cachedFetchedTitles.releaseDate;
-            console.log(`Using cached titles: episodeTitle="${fetchedEpisodeTitle}", releaseDate="${fetchedReleaseDate}"`);
-        }
-        if (fetchedEpisodeTitle && !mpcStatus.title.toLowerCase().startsWith('episode') && !/^S\d{2}E\d{2}/i.test(mpcStatus.title)) {
-            episodeTitle = fetchedEpisodeTitle; // Prioritas 2: dari titles.txt
-            releaseDate = fetchedReleaseDate || releaseDate;
-        }
-
-        // Logic caching untuk fetchPoster
-        const needsFetch =
-        mpcStatus.fileName !== lastFetchedFileName ||
-        mpcStatus.imdbID !== lastImdbId ||
-        mpcStatus.malID !== lastMalId ||
-        config.imdb_id !== lastConfigImdbId ||
-        config.mal_id !== lastConfigMalId ||
-        config.autoPoster !== lastAutoPoster;
-
-        if (needsFetch && (mpcStatus.imdbID || mpcStatus.malID || config.imdb_id || config.mal_id || config.autoPoster)) {
-            const titleForSearch = cleanName(mpcStatus.fileName);
-            const result = await fetchPoster(mpcStatus.imdbID, mpcStatus.malID, titleForSearch);
-
-            // KALAU API ERROR → JANGAN CACHE, COBA LAGI NANTI
-            if (result.retry) {
-                console.log("API gagal → skip cache, coba lagi 15 detik");
-                // JANGAN UPDATE cache variables!
-            } else {
-                // KALAU SUKSES → CACHE NORMAL
-                if (result.showTitle) {
-                    showTitle = result.showTitle;
-                    console.log(`Set showTitle: "${showTitle}"`);
-                }
-                if (!customImageURL) {
-                    largeImageKey = result.poster || largeImageKey;
-                }
-
-                // Update cache
-                cachedPoster = result.poster;
-                cachedShowTitle = result.showTitle;
-                lastFetchedFileName = mpcStatus.fileName;
-                lastImdbId = mpcStatus.imdbID;
-                lastMalId = mpcStatus.malID;
-                lastConfigImdbId = config.imdb_id;
-                lastConfigMalId = config.mal_id;
-                lastAutoPoster = config.autoPoster;
-            }
-        } else if (!needsFetch) {
-            // Gunakan cache jika tidak perlu fetch ulang
-            if (cachedShowTitle) {
-                showTitle = cachedShowTitle;
-                console.log(`Using cached showTitle: "${showTitle}"`);
-            }
-            if (!customImageURL && cachedPoster) {
-                largeImageKey = cachedPoster;
-                console.log(`Using cached poster: "${largeImageKey}"`);
-            }
-        } else {
-            console.log(`No IMDb or MAL ID found in video or config, and autoPoster is disabled. Using default title: "${showTitle}"`);
-        }
-
-        if (mpcStatus.isStopped) {
-            try {
-                client.user?.setActivity({
-                    details: 'Idling',
-                    state: 'Nothing is playing',
-                    type: 0,
-                    smallImageKey: "https://imgur.com/DhYzyGS.png",
-                    smallImageText: "Idle",
-                    largeImageKey: "https://i.imgur.com/MwZqLN8.png",
-                    largeImageText: 'Media Player Classic',
-                });
-                console.log('No file playing. Set presence to "Idling".');
-            } catch (err) {
-                console.error('Error setting idle activity:', err);
-            }
-        } else {
-            const smolIcon = mpcStatus.isPlaying
-            ? "https://i.imgur.com/8IYhOc2.png"
-            : "https://i.imgur.com/CCg9fxf.png";
-            const smolText = mpcStatus.isPlaying ? "Playing" : "Paused";
-
-            // State text tetap seperti sebelumnya
-            let stateText;
-            if (mpcStatus.isPlaying) {
-                // 1. episodeTitle (dari titles.txt)
-                if (fetchedEpisodeTitle) {
-                    stateText = fetchedEpisodeTitle;
-                    console.log(`State: episodeTitle → "${stateText}"`);
-                }
-                // 2. metadata title
-                else if (!mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) {
-                    stateText = mpcStatus.title;
-                    console.log(`State: metadata title → "${stateText}"`);
-                }
-                // 3. filename + ekstensi (hanya kalau showTitle ada)
-                else if (showTitle) {
-                    stateText = mpcStatus.fileName; // filename asli (dengan .mkv)
-                    console.log(`State: filename + ext (showTitle ada) → "${stateText}"`);
-                }
-                // 4. fallback: MKV Video (hanya kalau showTitle null)
-                else {
-                    stateText = getFallbackName(mpcStatus.fileName);
-                    console.log(`State: fallback → "${stateText}"`);
-                }
-            } else {
-                // PAUSE → tetap waktu
-                stateText = `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
-            }
-            console.log(`stateText set to: "${stateText}"`);
-
-            // Unified largeImageText untuk play/pause
-            let largeImageText;
-
-            if (mpcStatus.isPaused && !showTitle && fetchedEpisodeTitle) {
-                // KHUSUS: Pause + showTitle null + ada titles.txt → taruh episode di bawah poster
-                largeImageText = fetchedEpisodeTitle;
-                console.log(`largeImageText: episode title (khusus pause tanpa showTitle) → "${largeImageText}"`);
-            } else {
-                // NORMAL: config > fetchedReleaseDate > metadata release > MPC-HC
-                largeImageText = config.customBigText && config.customBigText.trim()
-                ? config.customBigText
-                : (fetchedReleaseDate ? `(${fetchedReleaseDate})`
-                : (mpcStatus.releaseDate ? `(${mpcStatus.releaseDate})`
-                : 'MPC-HC'));
-                console.log(`largeImageText: normal → "${largeImageText}"`);
-            }
-
-            const startTimestamp = mpcStatus.isPlaying ? Date.now() - (mpcStatus.position * 1000) : Date.now() - (mpcStatus.position * 1000);
-            const endTimestamp = mpcStatus.isPlaying ? startTimestamp + (mpcStatus.duration * 1000) : startTimestamp + (mpcStatus.position * 1000);
-
-            // Details text berdasarkan status play/pause
-            let nameText;
-            let detailsText;
-            let statusType;
-
-            if (mpcStatus.isPlaying) {
-                // PLAY → name undefined, details = showTitle, type 2
-                nameText = undefined; // jadi "Media Player Classic"
-                detailsText = showTitle || mpcStatus.fileName; // fallback filename kalau showTitle null
-                statusType = showTitle ? 2 : undefined;
-                console.log(`PLAY MODE → name: Media Player Classic | details: "${detailsText}"`);
-            } else {
-                // PAUSE → name = showTitle, details = episode, type 0
-                if (showTitle) {
-                    // Normal: showTitle ada → name = showTitle, details = episode
-                    nameText = showTitle;
-                    detailsText = fetchedEpisodeTitle || (!mpcStatus.isFallback ? mpcStatus.title : mpcStatus.fileName);
-                    statusDisplayType = 0;
-                    console.log(`PAUSE: Normal → name="${showTitle}", details="${detailsText}"`);
-                } else if (fetchedEpisodeTitle) {
-                    // KHUSUS: showTitle null, tapi ada titles.txt → name = MPC, details = filename, largeImageText = episode
-                    nameText = undefined; // → Media Player Classic
-                    detailsText = mpcStatus.fileName;
-                    statusDisplayType = 0;
-                    // Paksa largeImageText jadi episode title (bukan release date)
-                    largeImageText = fetchedEpisodeTitle;
-                    console.log(`PAUSE: showTitle null + titles.txt → name=MPC, details=filename, largeImageText="${fetchedEpisodeTitle}"`);
-                } else {
-                    // Tidak ada apa-apa → default
-                    nameText = undefined;
-                    detailsText = mpcStatus.fileName;
-                    statusDisplayType = 0;
-                    console.log(`PAUSE: Fallback → name=MPC, details=filename`);
-                }
-            }
-
-            const activityPayload = {
-                name: nameText, // Gunakan showTitle sebagai name (judul utama)
-                details: detailsText,
-                state: stateText,
-                startTimestamp: startTimestamp,
-                endTimestamp: endTimestamp,
-                type: 3,
-                statusDisplayType: statusType,
-                smallImageKey: smolIcon,
-                smallImageText: smolText,
-                largeImageKey: largeImageKey,
-                largeImageText: largeImageText || mpcStatus.title,
-            };
-            console.log('setActivity payload:', JSON.stringify(activityPayload, null, 2));
-            try {
-                client.user?.setActivity(activityPayload);
-                console.log(`Updated presence: ${mpcStatus.title} at ${mpcStatus.position}/${mpcStatus.duration}`);
-            } catch (err) {
-                console.error('Error setting activity:', err);
-            }
-        }
-    } else {
-        console.log('MPC status is null. Clearing activity.');
+    if (mpcStatus.isStopped) {
         try {
-            client.user?.clearActivity();
-        } catch (err) {
-            console.error('Error clearing activity:', err);
+            client.user?.setActivity({
+                details: 'Idling', state: 'Nothing is playing', type: 0,
+                smallImageKey: "https://imgur.com/DhYzyGS.png", smallImageText: "Idle",
+                largeImageKey: "https://i.imgur.com/MwZqLN8.png", largeImageText: 'Media Player Classic',
+            });
+        } catch (err) {}
+    } else {
+        let stateText;
+        if (mpcStatus.isPlaying) {
+            if (fetchedEpisodeTitle) stateText = fetchedEpisodeTitle;
+            else if (!mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) stateText = mpcStatus.title;
+            else if (showTitle) stateText = mpcStatus.rawFileName;
+            else stateText = getFallbackName(mpcStatus.rawFileName);
+        } else {
+            stateText = `${formatTime(mpcStatus.position)} / ${formatTime(mpcStatus.duration)}`;
         }
-        resetAllCaches();
+
+        let largeImageText;
+        if (mpcStatus.isPaused && !showTitle && fetchedEpisodeTitle) largeImageText = fetchedEpisodeTitle;
+        else largeImageText = config.customBigText && config.customBigText.trim() ? config.customBigText : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : (mpcStatus.releaseDate ? `(${mpcStatus.releaseDate})` : 'MPC-HC'));
+
+        const startTimestamp = Date.now() - (mpcStatus.position * 1000);
+        const endTimestamp = mpcStatus.isPlaying ? startTimestamp + (mpcStatus.duration * 1000) : startTimestamp + (mpcStatus.position * 1000);
+
+        let nameText, detailsText, statusType;
+        if (mpcStatus.isPlaying) {
+            nameText = undefined;
+            detailsText = showTitle || mpcStatus.rawFileName;
+            statusType = showTitle ? 2 : undefined;
+        } else {
+            if (showTitle) {
+                nameText = showTitle;
+                detailsText = fetchedEpisodeTitle || (!mpcStatus.isFallback ? mpcStatus.title : mpcStatus.rawFileName);
+                statusType = 0;
+            } else if (fetchedEpisodeTitle) {
+                nameText = undefined;
+                detailsText = mpcStatus.rawFileName;
+                statusType = 0;
+                largeImageText = fetchedEpisodeTitle;
+            } else {
+                nameText = undefined;
+                detailsText = mpcStatus.rawFileName;
+                statusType = 0;
+            }
+        }
+
+        const activityPayload = {
+            name: nameText, details: detailsText, state: stateText,
+            startTimestamp, endTimestamp, type: 3, statusDisplayType: statusType,
+            smallImageKey: mpcStatus.isPlaying ? "https://i.imgur.com/8IYhOc2.png" : "https://i.imgur.com/CCg9fxf.png",
+            smallImageText: mpcStatus.isPlaying ? "Playing" : "Paused",
+            largeImageKey: largeImageKey, largeImageText: largeImageText || mpcStatus.title,
+        };
+
+        try {
+            client.user?.setActivity(activityPayload);
+
+            const currentMediaState = mpcStatus.isPlaying ? 'PLAYING' : (mpcStatus.isPaused ? 'PAUSED' : 'STOPPED');
+
+            if (isNewMedia) {
+                checkClearConsole(); // <-- Panggil di awal sebelum print log!
+
+                const idSource = (mpcStatus.debugIds.metadata.imdb || mpcStatus.debugIds.metadata.mal) ? "Metadata File" :
+                (mpcStatus.debugIds.txt.imdb || mpcStatus.debugIds.txt.mal) ? "Txt Folder Video" :
+                (config.imdb_id || config.mal_id) ? "Config.js (Manual Override)" : "TIDAK DITEMUKAN";
+
+                const titleSource = (config.customText && config.customText.trim()) ? `Config customText -> "${config.customText}"` :
+                (fetchedEpisodeTitle) ? `titles.txt -> "${fetchedEpisodeTitle}"` :
+                (!mpcStatus.isFallback && mpcStatus.title) ? `Metadata Video -> "${mpcStatus.title}"` :
+                `TIDAK DITEMUKAN -> Fallback ke Nama File "${mpcStatus.fileName}"`;
+
+                const imageSource = (customImageURL) ? `Config customImage -> Aktif Digunakan` :
+                (cachedPoster) ? `API Poster (TMDb/OMDb) -> Sukses` :
+                `TIDAK DITEMUKAN -> Fallback ke Logo MPC-HC Default`;
+
+                const bigTextSource = (config.customBigText && config.customBigText.trim()) ? `Config customBigText -> "${config.customBigText}"` :
+                (fetchedReleaseDate) ? `titles.txt -> "${fetchedReleaseDate}"` :
+                (mpcStatus.releaseDate) ? `Metadata Video -> "${mpcStatus.releaseDate}"` :
+                `TIDAK DITEMUKAN -> Fallback ke "MPC-HC"`;
+
+                console.log(`\n==================================================`);
+                console.log(`🎬 [NEW MEDIA DETECTED] : ${mpcStatus.rawFileName}`);
+                console.log(`==================================================`);
+
+                console.log(`⚙️  [STATUS CONFIG.JS]`);
+                let isConfigUsed = false;
+                if (config.customText) { console.log(`   - customText    : OVERRIDE AKTIF -> "${config.customText}"`); isConfigUsed = true; }
+                if (config.customBigText) { console.log(`   - customBigText : OVERRIDE AKTIF -> "${config.customBigText}"`); isConfigUsed = true; }
+                if (customImageURL) { console.log(`   - customImage   : OVERRIDE AKTIF -> (Menggunakan Gambar Kustom)`); isConfigUsed = true; }
+                if (config.imdb_id || config.mal_id) { console.log(`   - Manual ID     : OVERRIDE AKTIF -> IMDb=${config.imdb_id || '-'}, MAL=${config.mal_id || '-'}`); isConfigUsed = true; }
+                if (!isConfigUsed) { console.log(`   - (Tidak ada pengaturan manual yang aktif, menggunakan mode otomatis)`); }
+
+                console.log(`\n📦 [1. RAW INPUTS & DETEKSI ID]`);
+                console.log(`   - File Asli   : ${mpcStatus.rawFileName}`);
+                console.log(`   - Sumber ID   : ${idSource}`);
+                console.log(`   - ID Terpakai : IMDb=${mpcStatus.imdbID || 'null'}, MAL=${mpcStatus.malID || 'null'}`);
+
+                console.log(`\n🍳 [2. PROSES MEMASAK & FALLBACK]`);
+                if (cachedFetchedTitles && cachedFetchedTitles.debugInfo) {
+                    const dbg = cachedFetchedTitles.debugInfo;
+                    if (dbg.loadedCount > 0 && dbg.parsedEpisode) {
+                        console.log(`   - Cek Episode : Ditemukan (Ep ${dbg.parsedEpisode} dari ${dbg.titlesFile})`);
+                    } else if (dbg.loadedCount > 0 && !dbg.parsedEpisode) {
+                        console.log(`   - Cek Episode : TIDAK DITEMUKAN -> Fallback (Angka episode gagal dibaca regex)`);
+                    } else {
+                        console.log(`   - Cek Episode : TIDAK DITEMUKAN -> Fallback (File titles_sX.txt tidak ada)`);
+                    }
+                }
+                console.log(`   - Final Title : ${titleSource}`);
+                console.log(`   - Final Image : ${imageSource}`);
+                console.log(`   - Big Text    : ${bigTextSource}`);
+
+                console.log(`\n🚀 [3. FINAL PAYLOAD (RPC DISCORD)]`);
+                console.log(JSON.stringify(activityPayload, null, 2));
+                console.log(`==================================================\n`);
+
+                lastLoggedFileName = mpcStatus.rawFileName;
+                lastLoggedState = currentMediaState;
+            }
+            else if (currentMediaState !== lastLoggedState) {
+                checkClearConsole(); // <-- Panggil di awal juga!
+
+                console.log(`\n⏯️ [STATE UPDATE] -> ${currentMediaState}`);
+                console.log(`   Payload Terkirim:`);
+                console.log(JSON.stringify(activityPayload, null, 2));
+                console.log(`--------------------------------------------------\n`);
+
+                lastLoggedState = currentMediaState;
+            }
+        } catch (err) {}
     }
 }
 
-// Format waktu dalam detik menjadi format hh:mm:ss
 function formatTime(seconds) {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-
-    if (hrs > 0) {
-        return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    } else {
-        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    }
+    if (hrs > 0) return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-// Konversi waktu dari format hh:mm:ss menjadi detik
 function convertTimeToSeconds(time) {
     const parts = time.split(':').map(Number);
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
 }
 
-// Koneksi ke Discord saat pertama kali
-client.on('ready', () => {
-    console.log(`Connected to Discord with clientId: ${mpcId}`);
-    presenceInterval = setInterval(async () => {
+// ==========================================
+// DISCORD CONNECTION & AUTO-RECONNECT
+// ==========================================
 
-        const status = await getMpcStatus();
+function initDiscord() {
+    // 1. Buat ulang instance client setiap kali reconnect agar socket tidak stale/mati
+    client = createClient();
 
-        // 🔴 Jika MPC mati / tidak bisa diakses
-        if (!status) {
-            if (lastPlaybackState !== 'offline') {
-                console.log("MPC not found → clearing presence");
-                lastPlaybackState = 'offline';
-                try {
-                    client.user?.clearActivity();
-                } catch (err) {
-                    console.error('Error clearing activity:', err);
+    client.on('ready', () => {
+        deepClearConsole();
+        console.log(`Terhubung ke Discord (RPC Siap) - clientId: ${mpcId}`);
+
+        // Bersihkan interval lama jika ini adalah hasil dari reconnect
+        if (presenceInterval) clearInterval(presenceInterval);
+
+        presenceInterval = setInterval(async () => {
+            const status = await getMpcStatus();
+
+            if (!status || status.isOffline) {
+                if (!mpcOfflineLogged) {
+                    deepClearConsole();
+                    console.log("⏳ MPC-HC ditutup atau belum dijalankan. Menunggu pemutar...");
+                    mpcOfflineLogged = true;
+                    updateEventCount = 0;
+                    lastLoggedFileName = null;
+                    lastLoggedState = null;
+                    lastPlaybackState = 'offline';
+                    try { client.user?.clearActivity(); } catch (err) {}
+                    resetAllCaches();
                 }
-                resetAllCaches();
+                return;
             }
-            return;
+
+            mpcOfflineLogged = false;
+            const currentState = status.isPlaying ? 'playing' : (status.isPaused ? 'paused' : 'stopped');
+
+            if (currentState === 'playing') {
+                lastPlaybackState = currentState;
+                await updatePresence(status);
+                return;
+            }
+            if (currentState !== lastPlaybackState) {
+                lastPlaybackState = currentState;
+                await updatePresence(status);
+            }
+        }, 5000);
+    });
+
+    client.on('disconnected', () => {
+        console.log('\n⚠️ Terputus dari Discord! Menunggu Discord dibuka kembali...');
+        if (presenceInterval) clearInterval(presenceInterval);
+
+        // Jeda 5 detik, lalu inisialisasi ulang seluruh koneksi
+        setTimeout(initDiscord, 5000);
+    });
+
+    let isWaitingForDiscord = false;
+    const connect = async () => {
+        try {
+            await client.login();
+            isWaitingForDiscord = false; // Reset status saat berhasil
+        } catch (err) {
+            // Mencegah spam log tiap 5 detik
+            if (!isWaitingForDiscord) {
+                console.log('⏳ Menunggu Discord dijalankan... (Otomatis menyambung jika Discord terbuka)');
+                isWaitingForDiscord = true;
+            }
+            // Loop tanpa henti tiap 5 detik sampai Discord dibuka
+            setTimeout(connect, 5000);
         }
+    };
 
-        const currentState =
-        status.isPlaying ? 'playing' :
-        status.isPaused ? 'paused' :
-        status.isStopped ? 'stopped' :
-        null;
-
-        // 🟢 PLAYING → selalu update
-        if (currentState === 'playing') {
-            lastPlaybackState = currentState;
-            await updatePresence(status);
-            return;
-        }
-
-        // 🟡 PAUSED / STOPPED → update hanya jika berubah
-        if (currentState !== lastPlaybackState) {
-            lastPlaybackState = currentState;
-            await updatePresence(status);
-        }
-
-    }, 5000); // Update setiap 15 detik
-});
-
-client.on('disconnected', () => {
-    console.log('Disconnected from Discord.');
-});
-
-// Fungsi login ke Discord
-async function loginToDiscord() {
-    try {
-        await client.login();
-        console.log(`Logged in to Discord with clientId: ${mpcId}`);
-    } catch (err) {
-        console.error('Error connecting to Discord:', err);
-        if (err.message.includes('ENOENT') || err.message.includes('ECONNREFUSED')) {
-            console.error('IPC connection failed. Please ensure Discord is running and accessible.');
-        }
-    }
+    // Jalankan siklus koneksi
+    connect();
 }
 
-// Inisialisasi koneksi ke Discord pertama kali
-loginToDiscord();
+// Mulai sistem auto-reconnect saat script pertama kali dijalankan
+initDiscord();

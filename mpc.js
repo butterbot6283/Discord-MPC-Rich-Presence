@@ -1,0 +1,114 @@
+// mpc.js
+const axios = require('axios');
+const path = require('path');
+const util = require('util');
+const { execFile } = require('child_process');
+const execFilePromise = util.promisify(execFile);
+const { fetchIdsFromTxt } = require('./titles');
+const { cleanName } = require('./utils');
+
+let lastFilePath = null;
+let cachedMetadata = null;
+
+const resetMpcCache = () => {
+    lastFilePath = null;
+    cachedMetadata = null;
+};
+
+const getMpcStatus = async (config) => {
+    try {
+        const response = await axios.get('http://127.0.0.1:13579/variables.html');
+        const data = response.data;
+
+        const fileNameMatch = data.match(/<p id="file">(.+?)<\/p>/);
+        let rawFileName = fileNameMatch ? fileNameMatch[1].trim() : 'Unknown File';
+        const cleanedFileName = cleanName(rawFileName, config);
+
+        const filePathMatch = data.match(/<p id="filepath">(.+?)<\/p>/);
+        const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
+
+        let ids = { tmdbID: null, malID: null };
+        let debugIds = { metadata: {tmdb: null, mal: null}, txt: {tmdb: null, mal: null}, config: {tmdb: config.tmdb_id, mal: config.mal_id} };
+        
+        let releaseDate = null;
+        let movieName = null;
+        let isFallback = false;
+
+        if (filePath) {
+            if (filePath !== lastFilePath || !cachedMetadata) {
+                try {
+                    // Eksekusi ffprobe dengan BATAS WAKTU 3 detik agar tidak bengong (hang)
+                    const { stdout } = await execFilePromise('ffprobe', [
+                        '-v', 'quiet', '-print_format', 'json', '-show_format', filePath
+                    ], { timeout: 3000 });
+                    
+                    const metadata = JSON.parse(stdout);
+                    const tags = metadata.format?.tags || {};
+                    const getTag = (keyName) => {
+                        const foundKey = Object.keys(tags).find(k => k.toLowerCase() === keyName.toLowerCase());
+                        return foundKey ? tags[foundKey] : null;
+                    };
+                    cachedMetadata = {
+                        metaTitle: getTag('title'), tmdbID: getTag('tmdb_ID'), malID: getTag('MAL_ID'),
+                        releaseDate: getTag('DATE_RELEASED') || getTag('date') || null, isError: false
+                    };
+                    lastFilePath = filePath;
+                } catch (err) {
+                    cachedMetadata = { isError: true };
+                    lastFilePath = filePath;
+                }
+            }
+
+            if (cachedMetadata && !cachedMetadata.isError) {
+                ids = { tmdbID: cachedMetadata.tmdbID, malID: cachedMetadata.malID };
+                debugIds.metadata = { tmdb: ids.tmdbID, mal: ids.malID };
+            }
+            // BARU: Ambil GroupID dari Txt
+            const videoDir = path.dirname(filePath);
+            const txtIds = fetchIdsFromTxt(videoDir);
+            
+            if (!ids.tmdbID || !ids.malID || txtIds.groupID) {
+                if (txtIds.tmdbID && !ids.tmdbID) ids.tmdbID = txtIds.tmdbID;
+                if (txtIds.malID && !ids.malID) ids.malID = txtIds.malID;
+                ids.groupID = txtIds.groupID || null;
+                debugIds.txt = { tmdb: txtIds.tmdbID, mal: txtIds.malID, group: txtIds.groupID };
+            }
+            if (!ids.tmdbID) ids.tmdbID = config.tmdb_id?.trim() || null;
+            if (!ids.malID) ids.malID = config.mal_id?.trim() || null;
+
+            const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
+            releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
+
+            if (config.customText && config.customText.trim()) movieName = config.customText;
+            else if (metaTitle && metaTitle.length <= 128) movieName = metaTitle;
+            else { movieName = cleanedFileName; isFallback = true; }
+        } else {
+            movieName = cleanedFileName; isFallback = true;
+            ids = { tmdbID: config.tmdb_id?.trim() || null, malID: config.mal_id?.trim() || null };
+        }
+
+        const cleanedMovieName = cleanName(movieName, config);
+        const currentTimeMatch = data.match(/(\d{2}:\d{2}:\d{2})/g);
+        const currentTime = currentTimeMatch ? currentTimeMatch[0] : '00:00:00';
+        const totalTime = currentTimeMatch ? currentTimeMatch[1] : '00:00:00';
+        const convertTimeToSec = (time) => {
+            const parts = time.split(':').map(Number);
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        };
+
+        return {
+            rawFileName, fileName: cleanedFileName, title: cleanedMovieName,
+            position: convertTimeToSec(currentTime), duration: convertTimeToSec(totalTime),
+            isPlaying: /<p id="state">2<\/p>/.test(data),
+            isPaused: /<p id="state">1<\/p>/.test(data),
+            isStopped: /<p id="state">-1<\/p>/.test(data),
+            tmdbID: ids.tmdbID, malID: ids.malID, groupID: ids.groupID,
+            debugIds, releaseDate, isFallback, filePath
+        };
+    } catch (error) {
+        if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') return { isOffline: true };
+        return null;
+    }
+};
+
+module.exports = { getMpcStatus, resetMpcCache };

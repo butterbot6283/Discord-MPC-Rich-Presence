@@ -33,22 +33,29 @@ const loadTitles = (videoDir) => {
 };
 
 const fetchIdsFromTxt = (videoDir) => {
-    let imdbID = null, malID = null;
+    let tmdbID = null, malID = null, groupID = null;
     try {
-        const imdbFilePath = path.join(videoDir, 'imdb.txt');
+        const tmdbFilePath = path.join(videoDir, 'tmdb.txt');
         const malFilePath = path.join(videoDir, 'mal.txt');
+        const groupFilePath = path.join(videoDir, 'group.txt'); // File baru untuk Episode Group
 
-        if (fs.existsSync(imdbFilePath)) {
-            const imdbContent = fs.readFileSync(imdbFilePath, 'utf-8').trim();
-            if (imdbContent && imdbContent.startsWith('tt')) imdbID = imdbContent;
+        if (fs.existsSync(tmdbFilePath)) {
+            const tmdbContent = fs.readFileSync(tmdbFilePath, 'utf-8').trim();
+            // Validasi diperbaiki: ID TMDb berupa angka, BUKAN diawali 'tt'
+            if (tmdbContent && !isNaN(tmdbContent)) tmdbID = tmdbContent;
         }
         if (fs.existsSync(malFilePath)) {
             const malContent = fs.readFileSync(malFilePath, 'utf-8').trim();
             if (malContent && !isNaN(malContent)) malID = malContent;
         }
-        return { imdbID, malID };
+        if (fs.existsSync(groupFilePath)) {
+            const groupContent = fs.readFileSync(groupFilePath, 'utf-8').trim();
+            // Validasi ID Group: Berupa string alfanumerik panjang (contoh: 69afde88e6719c2c9add36ce)
+            if (groupContent) groupID = groupContent;
+        }
+        return { tmdbID, malID, groupID };
     } catch (err) {
-        return { imdbID: null, malID: null };
+        return { tmdbID: null, malID: null, groupID: null };
     }
 };
 

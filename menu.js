@@ -190,7 +190,7 @@ function mainMenu() {
     console.log(`1. ${isRunning ? '⏹️  Stop index.js (PM2)' : '▶️  Start index.js (PM2)'}`);
     console.log("2. 📜 View Live Log (PM2)");
     console.log("3. 📝 Edit Text & IDs");
-    console.log("4. 🕹️  Edit Switches (True/False) & Don't");
+    console.log("4. 🕹️  Edit Switches (True/False)");
     console.log("5. 🖼️  Edit Custom Image & Slideshow");
     console.log("6. 🧹 Edit Clean Regex");
     console.log("0. ❌ Exit");

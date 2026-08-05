@@ -107,6 +107,7 @@ function runNpmCommand(command) {
         if (command === 'start') {
             execSync(`cd "${__dirname}" && ${cmd} start index.js --name index`, { stdio: 'ignore' });
         } else if (command === 'stop') {
+            execSync(`cd "${__dirname}" && ${cmd} flush`, { stdio: 'ignore' });
             execSync(`cd "${__dirname}" && ${cmd} stop index`, { stdio: 'ignore' });
             execSync(`cd "${__dirname}" && ${cmd} delete index`, { stdio: 'ignore' });
         }
@@ -369,7 +370,7 @@ async function viewLiveLogs() {
     console.log('Press [ENTER] at any time to stop logging and return to menu.\n');
 
     const pm2Cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const logProcess = spawn(pm2Cmd, ['--silent', 'pm2', 'logs', 'index', '--raw', '--lines', '35'], {
+    const logProcess = spawn(pm2Cmd, ['--silent', 'pm2', 'logs', 'index', '--out', '--raw', '--lines', '35'], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true 
     });

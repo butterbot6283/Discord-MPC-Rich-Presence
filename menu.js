@@ -14,12 +14,33 @@ const question = (query) => new Promise((resolve) => rl.question(query, resolve)
 
 let config = {};
 
+// Default config diurutkan secara spesifik sesuai permintaan
 const defaultConfig = {
-    personal_tmdb_token: "", tmdb_id: "", mal_id: "", customText: "", customBigText: "",
-    autoPoster: true, autoEpisode: true, autoDate: true, 
-    cleanFilename: true, romajiTitle: false, randomPoster: false,
-    dont: "okay", slideshowInterval: 0, customImage: [""],
-    cleanRegex: ["\\b(2160p|1080p|720p|480p)\\b", "\\b(BluRay|BRRip|BDRip|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|DVDRip|CAM|TS|TC)\\b", "\\b(x264|x265|H264|H265|HEVC|AAC|AC3|EAC3|DTS|FLAC|10bit|8bit)\\b", "\\b\\d{2,4}MB\\b", "\\b\\d{1,2}\\.\\d{1,2}GB\\b", "-?Pahe\\.in", "-?PSA", "-?YTS\\.[A-Z]{2}"]
+    personal_tmdb_token: "",
+    tmdb_id: "",
+    mal_id: "",
+    customText: "",
+    customBigText: "",
+    autoPoster: true,
+    autoEpisode: true,
+    autoDate: true,
+    cleanFilename: true,
+    romajiTitle: false,
+    randomPoster: true,
+    slideshowInterval: 0,
+    dont: "nah",
+    customImage: [""],
+    cleanRegex: [
+        "\\b(2160p|1080p|720p|480p)\\b",
+        "\\b(BluRay|BRRip|BDRip|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|DVDRip|CAM|TS|TC)\\b",
+        "\\b(x264|x265|H264|H265|HEVC|AAC|AC3|EAC3|DTS|FLAC|10bit|8bit)\\b",
+        "\\b\\d{2,4}MB\\b",
+        "\\b\\d{1,2}\\.\\d{1,2}GB\\b",
+        "-?Pahe\\.in",
+        "-?PSA",
+        "-?YTS\\.[A-Z]{2}",
+        "-?Pahe\\.ph"
+    ]
 };
 
 function loadConfig() {
@@ -30,22 +51,44 @@ function loadConfig() {
             if (config.tmdb_id === undefined) config.tmdb_id = config.imdb_id || "";
             if (config.romajiTitle === undefined) config.romajiTitle = false;
             if (config.randomPoster === undefined) config.randomPoster = true;
-            if (config.dont === undefined) config.dont = "okay";
+            if (config.dont === undefined) config.dont = "nah";
             if (config.slideshowInterval === undefined) config.slideshowInterval = 0;
             if (config.autoPoster === undefined) config.autoPoster = true;
             if (config.autoEpisode === undefined) config.autoEpisode = true;
             if (config.autoDate === undefined) config.autoDate = true;
-            delete config.imdb_id;
+            delete config.imdb_id; // Hapus ID lama jika ada
         } else {
             config = { ...defaultConfig };
         }
         saveConfig();
-    } catch (err) { console.error("Gagal membaca config.json", err); }
+    } catch (err) { console.error("Failed to read config.json", err); }
 }
 
-function saveConfig() { fs.writeFileSync(configPath, JSON.stringify(config, null, 4)); }
+function saveConfig() {
+    // Memaksa urutan kunci secara absolut setiap kali config disimpan
+    const orderedConfig = {
+        personal_tmdb_token: config.personal_tmdb_token,
+        tmdb_id: config.tmdb_id,
+        mal_id: config.mal_id,
+        customText: config.customText,
+        customBigText: config.customBigText,
+        autoPoster: config.autoPoster,
+        autoEpisode: config.autoEpisode,
+        autoDate: config.autoDate,
+        cleanFilename: config.cleanFilename,
+        romajiTitle: config.romajiTitle,
+        randomPoster: config.randomPoster,
+        slideshowInterval: config.slideshowInterval,
+        dont: config.dont,
+        customImage: config.customImage,
+        cleanRegex: config.cleanRegex
+    };
 
-function clearScreen() { 
+    config = orderedConfig;
+    fs.writeFileSync(configPath, JSON.stringify(orderedConfig, null, 4));
+}
+
+function clearScreen() {
     try {
         if (process.platform === 'win32') {
             process.stdout.write('\x1Bc');
@@ -107,8 +150,11 @@ function runNpmCommand(command) {
         if (command === 'start') {
             execSync(`cd "${__dirname}" && ${cmd} start index.js --name index`, { stdio: 'ignore' });
         } else if (command === 'stop') {
-            execSync(`cd "${__dirname}" && ${cmd} flush`, { stdio: 'ignore' });
+            // 1. Flush (Sapu bersih log) saat PM2 masih mengenali proses 'index'
+            execSync(`cd "${__dirname}" && ${cmd} flush index`, { stdio: 'ignore' });
+            // 2. Stop prosesnya
             execSync(`cd "${__dirname}" && ${cmd} stop index`, { stdio: 'ignore' });
+            // 3. Baru hapus prosesnya dari daftar PM2
             execSync(`cd "${__dirname}" && ${cmd} delete index`, { stdio: 'ignore' });
         }
     } catch (err) {}
@@ -119,9 +165,9 @@ function runNpmCommand(command) {
 // ==========================================
 function printFullConfig() {
     console.log("==================================================");
-    console.log("            ⚙️ STATUS CONFIG.JSON SAAT INI         ");
+    console.log("          ⚙️ CURRENT CONFIG.JSON STATUS           ");
     console.log("==================================================");
-    console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Terisi (Disembunyikan)" : "Kosong (Pakai Default)"}'`);
+    console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Filled (Hidden)" : "Empty (Using Default)"}'`);
     console.log(` [TEXT] tmdb_id           : '${config.tmdb_id || ""}'`);
     console.log(` [TEXT] mal_id            : '${config.mal_id || ""}'`);
     console.log(` [TEXT] customText        : '${config.customText || ""}'`);
@@ -131,9 +177,9 @@ function printFullConfig() {
     console.log(` [SW]   romajiTitle       : ${config.romajiTitle}`);
     console.log(` [SW]   randomPoster      : ${config.randomPoster}`);
     console.log(` [SW]   Don't             : '${config.dont}'`);
-    console.log(` [IMG]  slideshowInterval : ${config.slideshowInterval} detik`);
-    console.log(` [IMG]  customImage       : [${config.customImage.length} URL]`);
-    console.log(` [RGX]  cleanRegex        : [${config.cleanRegex.length} Aturan]`);
+    console.log(` [IMG]  slideshowInterval : ${config.slideshowInterval} seconds`);
+    console.log(` [IMG]  customImage       : [${config.customImage.length} URLs]`);
+    console.log(` [RGX]  cleanRegex        : [${config.cleanRegex.length} Rules]`);
     console.log("==================================================\n");
 }
 
@@ -141,7 +187,7 @@ function printTextConfig() {
     console.log("==================================================");
     console.log("             ⚙️ TEXT & IDs CONFIG                ");
     console.log("==================================================");
-    console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Terisi (Disembunyikan)" : "Kosong (Pakai Default)"}'`);
+    console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Filled (Hidden)" : "Empty (Using Default)"}'`);
     console.log(` [TEXT] tmdb_id           : '${config.tmdb_id || ""}'`);
     console.log(` [TEXT] mal_id            : '${config.mal_id || ""}'`);
     console.log(` [TEXT] customText        : '${config.customText || ""}'`);
@@ -165,8 +211,8 @@ function printImageConfig() {
     console.log("==================================================");
     console.log("          ⚙️ CUSTOM IMAGE & SLIDESHOW            ");
     console.log("==================================================");
-    console.log(` [IMG]  slideshowInterval : ${config.slideshowInterval} detik`);
-    console.log(` [IMG]  customImage       : [${config.customImage.length} URL]`);
+    console.log(` [IMG]  slideshowInterval : ${config.slideshowInterval} seconds`);
+    console.log(` [IMG]  customImage       : [${config.customImage.length} URLs]`);
     console.log("==================================================\n");
 }
 
@@ -178,33 +224,33 @@ function mainMenu() {
     fetchPm2Data();
     const status = getIndexStatus();
     const isRunning = status === 'Running';
-    
+
     console.log("=== MPC Discord Presence Menu ===\n");
     printFullConfig();
-    
+
     console.log(`📌 index.js status: ${isRunning ? 'Running 🟢' : 'Stopped 🔴'}`);
     console.log(getPm2Table());
     console.log("");
-    
+
     console.log("--- 🏠 MAIN MENU ---");
-    console.log(`1. ${isRunning ? '⏹️  Stop index.js (PM2)' : '▶️  Start index.js (PM2)'}`);
+    console.log(`1. ${isRunning ? '⏹️ Stop index.js (PM2)' : '▶️ Start index.js (PM2)'}`);
     console.log("2. 📜 View Live Log (PM2)");
     console.log("3. 📝 Edit Text & IDs");
-    console.log("4. 🕹️  Edit Switches (True/False)");
-    console.log("5. 🖼️  Edit Custom Image & Slideshow");
+    console.log("4. 🕹️ Edit Switches (True/False)");
+    console.log("5. 🖼️ Edit Custom Image & Slideshow");
     console.log("6. 🧹 Edit Clean Regex");
     console.log("0. ❌ Exit");
-    rl.question("\nPilih menu: ", (choice) => handleMainMenu(choice, isRunning));
+    rl.question("\nSelect an option: ", (choice) => handleMainMenu(choice, isRunning));
 }
 
 function handleMainMenu(choice, isRunning) {
     switch (choice.trim()) {
         case '1':
             if (isRunning) {
-                console.log("Menghentikan index.js...");
+                console.log("Stopping index.js...");
                 runNpmCommand('stop');
             } else {
-                console.log("Memulai index.js...");
+                console.log("Starting index.js...");
                 runNpmCommand('start');
             }
             setTimeout(mainMenu, 1500); break;
@@ -212,7 +258,7 @@ function handleMainMenu(choice, isRunning) {
         case '3': textMenu(); break;
         case '4': switchesMenu(); break;
         case '5': imageMenu(); break;
-        case '6': editArrayMenu('cleanRegex', "Regex memotong nama file", mainMenu); break;
+        case '6': editArrayMenu('cleanRegex', "Regex for cleaning filenames", mainMenu); break;
         case '0': rl.close(); break;
         default: mainMenu(); break;
     }
@@ -220,21 +266,21 @@ function handleMainMenu(choice, isRunning) {
 
 function textMenu() {
     clearScreen();
-    printTextConfig(); 
-    console.log("--- 📝 MENU TEXT & IDs ---");
-    console.log("1. Edit personal_tmdb_token (API Key Pribadi)");
+    printTextConfig();
+    console.log("--- 📝 TEXT & IDs MENU ---");
+    console.log("1. Edit personal_tmdb_token (Private API Key)");
     console.log("2. Edit tmdb_id");
     console.log("3. Edit mal_id");
     console.log("4. Edit customText");
     console.log("5. Edit customBigText");
-    console.log("0. 🔙 Kembali");
-    rl.question("\nPilih opsi: ", (choice) => {
+    console.log("0. 🔙 Back");
+    rl.question("\nSelect an option: ", (choice) => {
         switch (choice.trim()) {
-            case '1': editString('personal_tmdb_token', "Masukkan Personal TMDb Token (JWT/Bearer)", textMenu); break;
-            case '2': editString('tmdb_id', "Masukkan tmdb_id", textMenu); break;
-            case '3': editString('mal_id', "Masukkan mal_id", textMenu); break;
-            case '4': editString('customText', "Masukkan customText", textMenu); break;
-            case '5': editString('customBigText', "Masukkan customBigText", textMenu); break;
+            case '1': editString('personal_tmdb_token', "Enter Personal TMDb Token (JWT/Bearer)", textMenu); break;
+            case '2': editString('tmdb_id', "Enter tmdb_id", textMenu); break;
+            case '3': editString('mal_id', "Enter mal_id", textMenu); break;
+            case '4': editString('customText', "Enter customText", textMenu); break;
+            case '5': editString('customBigText', "Enter customBigText", textMenu); break;
             case '0': mainMenu(); break;
             default: textMenu(); break;
         }
@@ -243,17 +289,17 @@ function textMenu() {
 
 function switchesMenu() {
     clearScreen();
-    printSwitchesConfig(); 
-    console.log("--- 🕹️ MENU SWITCHES ---");
-    console.log("1. Menu Auto TMDb 📽");
+    printSwitchesConfig();
+    console.log("--- 🕹️ SWITCHES MENU ---");
+    console.log("1. Auto TMDb Menu 📽");
     console.log(`2. Toggle cleanFilename (${config.cleanFilename})`);
     console.log(`3. Toggle romajiTitle   (${config.romajiTitle})`);
     console.log(`4. Toggle randomPoster  (${config.randomPoster})`);
     console.log(`5. Don't                (${config.dont})`);
-    console.log("0. 🔙 Kembali");
-    rl.question("\nPilih opsi: ", (choice) => {
+    console.log("0. 🔙 Back");
+    rl.question("\nSelect an option: ", (choice) => {
         switch (choice.trim()) {
-            case '1': autoTmdbMenu(); break; 
+            case '1': autoTmdbMenu(); break;
             case '2': config.cleanFilename = !config.cleanFilename; saveConfig(); switchesMenu(); break;
             case '3': config.romajiTitle = !config.romajiTitle; saveConfig(); switchesMenu(); break;
             case '4': config.randomPoster = !config.randomPoster; saveConfig(); switchesMenu(); break;
@@ -273,23 +319,23 @@ function autoTmdbMenu() {
     console.log(` [SW] autoEpisode : ${config.autoEpisode}`);
     console.log(` [SW] autoDate    : ${config.autoDate}`);
     console.log("==================================================\n");
-    console.log("--- 📽  MENU AUTO TMDb ---");
+    console.log("--- 📽  AUTO TMDb MENU ---");
     console.log(`1. Toggle autoPoster  (${config.autoPoster})`);
     console.log(`2. Toggle autoEpisode (${config.autoEpisode})`);
     console.log(`3. Toggle autoDate    (${config.autoDate})`);
     console.log("4. Let it Ride");
-    console.log("0. 🔙 Kembali");
-    rl.question("\nPilih opsi: ", (choice) => {
+    console.log("0. 🔙 Back");
+    rl.question("\nSelect an option: ", (choice) => {
         switch (choice.trim()) {
             case '1': config.autoPoster = !config.autoPoster; saveConfig(); autoTmdbMenu(); break;
             case '2': config.autoEpisode = !config.autoEpisode; saveConfig(); autoTmdbMenu(); break;
             case '3': config.autoDate = !config.autoDate; saveConfig(); autoTmdbMenu(); break;
-            case '4': 
-                config.autoPoster = true; 
-                config.autoEpisode = true; 
-                config.autoDate = true; 
-                saveConfig(); 
-                switchesMenu(); 
+            case '4':
+                config.autoPoster = true;
+                config.autoEpisode = true;
+                config.autoDate = true;
+                saveConfig();
+                switchesMenu();
                 break;
             case '0': switchesMenu(); break;
             default: autoTmdbMenu(); break;
@@ -299,16 +345,16 @@ function autoTmdbMenu() {
 
 function imageMenu() {
     clearScreen();
-    printImageConfig(); 
-    console.log("--- 🖼️ MENU CUSTOM IMAGE & SLIDESHOW ---");
-    console.log("1. Edit Array URL customImage");
-    console.log("2. Set slideshowInterval (Detik)");
-    console.log("0. 🔙 Kembali");
-    rl.question("\nPilih opsi: ", (choice) => {
+    printImageConfig();
+    console.log("--- 🖼️ CUSTOM IMAGE & SLIDESHOW MENU ---");
+    console.log("1. Edit customImage Array URLs");
+    console.log("2. Set slideshowInterval (Seconds)");
+    console.log("0. 🔙 Back");
+    rl.question("\nSelect an option: ", (choice) => {
         switch (choice.trim()) {
-            case '1': editArrayMenu('customImage', "URL Gambar Kustom", imageMenu); break;
-            case '2': 
-                rl.question("Interval detik (Isi 0 matikan slideshow): ", (val) => {
+            case '1': editArrayMenu('customImage', "Custom Image URLs", imageMenu); break;
+            case '2':
+                rl.question("Interval in seconds (0 to disable): ", (val) => {
                     if (!isNaN(parseInt(val, 10))) { config.slideshowInterval = parseInt(val, 10); saveConfig(); }
                     imageMenu();
                 }); break;
@@ -319,7 +365,7 @@ function imageMenu() {
 }
 
 function editString(key, promptText, callback) {
-    rl.question(`${promptText} (Ketik lalu Enter, kosongkan untuk hapus): `, (val) => {
+    rl.question(`${promptText} (Type and press Enter, leave blank to remove): `, (val) => {
         config[key] = val.trim(); saveConfig(); callback();
     });
 }
@@ -330,23 +376,23 @@ function editArrayMenu(key, description, callback) {
     console.log(`Info: ${description}`);
     config[key].forEach((item, index) => { console.log(`[${index + 1}]. ${item}`); });
     console.log("-------------------");
-    console.log("A. Tambah data baru");
-    
+    console.log("A. Add new entry");
+
     const canDelete = config[key].length > 1;
-    if (canDelete) console.log("D. Hapus data (berdasarkan nomor)");
-    
-    console.log("R. Reset kembali ke default");
-    console.log("0. 🔙 Kembali");
-    
-    rl.question("\nPilih aksi: ", (action) => {
+    if (canDelete) console.log("D. Delete entry (by number)");
+
+    console.log("R. Reset to default");
+    console.log("0. 🔙 Back");
+
+    rl.question("\nSelect action: ", (action) => {
         action = action.trim().toUpperCase();
         if (action === 'A') {
-            rl.question("Masukkan teks/URL baru: ", (val) => {
+            rl.question("Enter new text/URL: ", (val) => {
                 config[key].push(val.trim()); saveConfig(); editArrayMenu(key, description, callback);
             });
         } else if (action === 'D') {
             if (!canDelete) return editArrayMenu(key, description, callback);
-            rl.question("Masukkan nomor urut yang ingin dihapus: ", (val) => {
+            rl.question("Enter the number to delete: ", (val) => {
                 const idx = parseInt(val, 10) - 1;
                 if (idx >= 0 && idx < config[key].length) { config[key].splice(idx, 1); saveConfig(); }
                 editArrayMenu(key, description, callback);
@@ -372,13 +418,14 @@ async function viewLiveLogs() {
     const pm2Cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     const logProcess = spawn(pm2Cmd, ['--silent', 'pm2', 'logs', 'index', '--out', '--raw', '--lines', '35'], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: true 
+        // Matikan shell di Linux agar tidak memicu [DEP0190], tapi biarkan menyala di Windows
+        shell: process.platform === 'win32'
     });
 
     const filterAndPrint = (data) => {
         const text = data.toString();
-        
-        if (text.includes('🧹 Console dibersihkan otomatis')) {
+
+        if (text.includes('🧹 Console auto-cleared')) {
             clearScreen();
             console.log('==================================================');
             console.log('🟢 STREAMING LIVE LOG PM2 (ACTIVE - CLEARED)');
@@ -387,11 +434,11 @@ async function viewLiveLogs() {
         }
 
         const filteredLines = text.split('\n').filter(line => {
-            return !line.includes('[TAILING]') && 
-                   !line.includes('last 35 lines:') &&
-                   !line.includes('🧹 Console dibersihkan otomatis');
+            return !line.includes('[TAILING]') &&
+            !line.includes('last 35 lines:') &&
+            !line.includes('🧹 Console auto-cleared');
         });
-        
+
         const finalOutput = filteredLines.join('\n').trim();
         if (finalOutput) {
             process.stdout.write(finalOutput + '\n');
@@ -402,7 +449,7 @@ async function viewLiveLogs() {
     logProcess.stderr.on('data', filterAndPrint);
 
     logProcess.on('error', (err) => {
-        console.error('\n⚠️ Gagal memuat log:', err.message);
+        console.error('\n⚠️ Failed to load logs:', err.message);
     });
 
     await question('');

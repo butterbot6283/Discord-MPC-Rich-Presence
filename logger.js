@@ -1,10 +1,16 @@
 // logger.js
+// File ini bertanggung jawab untuk semua output ke console/terminal.
+
 const { execSync } = require('child_process');
 
-let updateEventCount = 0; 
+let updateEventCount = 0;
 let lastLoggedState = null;
 let mpcOfflineLogged = false;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITAS CONSOLE
+// ─────────────────────────────────────────────────────────────────────────────
+// Membersihkan terminal secara menyeluruh sesuai platform OS
 function deepClearConsole() {
     try {
         if (process.platform === 'linux') {
@@ -17,30 +23,48 @@ function deepClearConsole() {
             console.clear();
         }
     } catch (e) {
-        console.clear(); 
+        console.clear();
     }
 }
 
+// Hitung update log, lalu bersihkan console otomatis jika sudah 10x agar tidak penuh
 function checkClearConsole() {
     if (updateEventCount >= 10) {
         deepClearConsole();
-        console.log("🧹 Console dibersihkan otomatis (batas 10x update log tercapai)...");
+        console.log('🧹 Console auto-cleared (10 update limit reached)...');
         updateEventCount = 0;
     }
     updateEventCount++;
 }
 
-function logReady(clientId) {
-    deepClearConsole();
-    console.log(`Terhubung ke Discord (RPC Siap) - clientId: ${clientId}`);
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Fungsi kecil untuk membuat baris status yang seragam
+// Contoh output: "   - FFprobe      : ✅ Metadata found (Title, TMDb ID)"
+// ─────────────────────────────────────────────────────────────────────────────
+function statusLine(label, icon, message) {
+    // Pad label ke 14 karakter agar semua kolom rata
+    const paddedLabel = label.padEnd(14, ' ');
+    return `   - ${paddedLabel}: ${icon} ${message}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG UTAMA: Siap terhubung ke Discord
+// ─────────────────────────────────────────────────────────────────────────────
+function logReady(clientId) {
+    deepClearConsole();
+    console.log(`✅ Connected to Discord (RPC Ready) — clientId: ${clientId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG UTAMA: MPC-HC tidak terdeteksi / offline
+// Hanya cetak sekali sampai MPC-HC hidup lagi (flag mpcOfflineLogged)
+// ─────────────────────────────────────────────────────────────────────────────
 function logOffline() {
     if (!mpcOfflineLogged) {
         deepClearConsole();
-        console.log("⏳ MPC-HC ditutup atau belum dijalankan. Menunggu pemutar...");
+        console.log('⏳ MPC-HC is closed or not running. Waiting for player...');
         mpcOfflineLogged = true;
-        updateEventCount = 0; 
+        updateEventCount = 0;
         lastLoggedState = null;
     }
 }
@@ -49,69 +73,236 @@ function resetOfflineStatus() {
     mpcOfflineLogged = false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG UTAMA: Media baru terdeteksi
+// Ini adalah log paling penting — cetak seluruh pipeline dari awal sampai akhir
+// ─────────────────────────────────────────────────────────────────────────────
 function logNewMedia(mpcStatus, activityPayload, debugData, config) {
-    checkClearConsole(); 
-                
-    console.log(`\n==================================================`);
-    console.log(`🎬 [NEW MEDIA DETECTED] : ${mpcStatus.rawFileName}`);
-    console.log(`==================================================`);
-    
-    console.log(`⚙️  [STATUS CONFIG.JSON]`);
-    let isConfigUsed = false;
-    if (config.customText) { console.log(`   - customText    : OVERRIDE AKTIF -> "${config.customText}"`); isConfigUsed = true; }
-    if (config.customBigText) { console.log(`   - customBigText : OVERRIDE AKTIF -> "${config.customBigText}"`); isConfigUsed = true; }
-    if (debugData.customImageURL) { console.log(`   - customImage   : OVERRIDE AKTIF -> (Menggunakan Gambar Kustom)`); isConfigUsed = true; }
-    if (config.tmdb_id || config.mal_id) { console.log(`   - Manual ID     : OVERRIDE AKTIF -> TMDb=${config.tmdb_id || '-'}, MAL=${config.mal_id || '-'}`); isConfigUsed = true; }
-    if (!isConfigUsed) { console.log(`   - (Tidak ada pengaturan manual yang aktif, menggunakan mode otomatis)`); }
+    checkClearConsole();
 
-    console.log(`\n📦 [1. RAW INPUTS & DETEKSI ID]`);
-    console.log(`   - File Asli   : ${mpcStatus.rawFileName}`);
-    console.log(`   - Sumber ID   : ${debugData.idSource}`);
-    console.log(`   - ID Terpakai : TMDb=${mpcStatus.tmdbID || 'null'}, MAL=${mpcStatus.malID || 'null'}`);
-    
-    console.log(`\n🍳 [2. PROSES MEMASAK & FALLBACK]`);
-    if (debugData.fetchedEpisodeTitle) {
-        let titleSrcFile = debugData.cachedFetchedTitles?.debugInfo?.titlesFile || "titles.txt";
-        console.log(`   - Cek Episode : Sukses via ${titleSrcFile} -> "${debugData.fetchedEpisodeTitle}"`);
-    } else if (debugData.cachedApiEpisodeTitle) {
-        console.log(`   - Cek Episode : Sukses via API TMDb -> "${debugData.cachedApiEpisodeTitle}"`);
-    } else if (debugData.cachedFetchedTitles?.debugInfo?.loadedCount > 0) {
-        console.log(`   - Cek Episode : Gagal Fallback -> Angka episode tidak terbaca dari nama file`);
-    } else {
-        console.log(`   - Cek Episode : TIDAK DITEMUKAN -> (Tidak ada titles_sX.txt dan gagal API)`);
+    // ── Variabel Bantu ────────────────────────────────────────────────────────
+    const isGroup    = !!mpcStatus.groupID;
+    const sourceInfo = debugData.cachedPosterSource || 'Not Found';
+    const isCache    = sourceInfo.includes('[CACHE]');
+    const cleanSource = sourceInfo.replace('[CACHE] ', '');
+
+    // Tentukan apakah setiap step berhasil atau gagal untuk badge ✅/⚠️/❌
+    const ffprobeTimeout = mpcStatus._ffprobeTimedOut; // flag opsional dari mpc.js
+    const txtOk          = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.mal || mpcStatus.debugIds?.txt?.group;
+    const posterOk       = cleanSource !== 'Not Found' && cleanSource !== 'Error' && debugData.cachedPosterSource;
+
+    // ── Header ────────────────────────────────────────────────────────────────
+    console.log(`\n${'═'.repeat(56)}`);
+    console.log(`🎬 NEW MEDIA DETECTED`);
+    console.log(`   ${mpcStatus.rawFileName}`);
+    console.log(`${'═'.repeat(56)}`);
+
+    // ── Blok Config Override ──────────────────────────────────────────────────
+    // Tampilkan hanya jika ada override aktif dari config.json
+    const hasOverride = config.customText || config.customBigText || debugData.customImageURL || config.tmdb_id || config.mal_id || config.romajiTitle;
+
+    if (hasOverride) {
+        console.log(`\n⚙️  [CONFIG OVERRIDES ACTIVE]`);
+        if (config.customText)       console.log(`   - customText    : "${config.customText}"`);
+        if (config.customBigText)    console.log(`   - customBigText : "${config.customBigText}"`);
+        if (debugData.customImageURL)console.log(`   - customImage   : Custom image URL in use`);
+        if (config.romajiTitle)      console.log(`   - romajiTitle   : Enabled (Prefer Japanese Transliteration)`);
+        if (config.tmdb_id || config.mal_id)
+            console.log(`   - Manual ID     : TMDb=${config.tmdb_id || '—'}, MAL=${config.mal_id || '—'}`);
     }
-    
-    console.log(`   - Final Title : ${debugData.titleSource}`);
 
-    if (config.autoPoster && debugData.cachedPosterDebug && !debugData.customImageURL) {
-        const yearInfo = debugData.cachedPosterDebug.year ? `(Tahun: ${debugData.cachedPosterDebug.year})` : '';
-        console.log(`   - AutoPoster  : Aktif -> Mencari: "${debugData.cachedPosterDebug.cleanTitle}" ${yearInfo}`);
-        
-        if (debugData.cachedPosterDebug.searchedTmdb) {
-            const statusTmdb = (debugData.cachedPosterSource.includes('TMDb (AutoPoster')) ? 'Ketemu!' : 'Gagal / Tidak Ada';
-            console.log(`                   > Cek TMDb... ${statusTmdb}`);
+    // ── Blok 1: Input Mentah & Resolusi ID ───────────────────────────────────
+    console.log(`\n📦 [1. RAW INPUT & ID RESOLUTION]`);
+    console.log(`   - Raw File      : ${mpcStatus.rawFileName}`);
+    console.log(`   - Clean File    : ${mpcStatus.fileName}`);
+    console.log(`   - Order Mode    : ${isGroup ? '👥 EPISODE GROUP (absolute order)' : '📺 SEASON (standard order)'}`);
+
+    // ── Sub-blok 1a: FFprobe ──────────────────────────────────────────────────
+    // Cetak detail apa saja yang berhasil dibaca dari metadata file
+    if (ffprobeTimeout) {
+        // FFprobe tidak menjawab dalam 3 detik (disk lambat / file di jaringan)
+        console.log(statusLine('FFprobe', '⏱️', 'Timed out (>3s) — falling back to filename'));
+    } else if (mpcStatus.debugIds?.metadata?.tmdb || mpcStatus.debugIds?.metadata?.mal) {
+        // Metadata ditemukan: cetak apa saja yang ada
+        const found = [];
+        if (!mpcStatus.isFallback && mpcStatus.title) found.push(`Title: "${mpcStatus.title}"`);
+        if (mpcStatus.debugIds.metadata.tmdb) found.push(`TMDb ID: ${mpcStatus.debugIds.metadata.tmdb}`);
+        if (mpcStatus.debugIds.metadata.mal)  found.push(`MAL ID: ${mpcStatus.debugIds.metadata.mal}`);
+        if (mpcStatus.releaseDate)             found.push(`Date: ${mpcStatus.releaseDate}`);
+        console.log(statusLine('FFprobe', '✅', found.join(' · ')));
+    } else if (!mpcStatus.isFallback && mpcStatus.title) {
+        // Ada judul dari metadata tapi tidak ada ID
+        console.log(statusLine('FFprobe', '✅', `Title found: "${mpcStatus.title}" (no embedded IDs)`));
+    } else {
+        // Tidak ada metadata sama sekali — fallback ke nama file
+        console.log(statusLine('FFprobe', '⚠️', 'No embedded metadata — using filename as title'));
+    }
+
+    // ── Sub-blok 1b: TXT Files ────────────────────────────────────────────────
+    // Cetak hasil baca tmdb.txt / mal.txt / group.txt dari folder video
+    if (txtOk) {
+        const txtFound = [];
+        if (mpcStatus.debugIds?.txt?.tmdb)  txtFound.push(`TMDb: ${mpcStatus.debugIds.txt.tmdb}`);
+        if (mpcStatus.debugIds?.txt?.mal)   txtFound.push(`MAL: ${mpcStatus.debugIds.txt.mal}`);
+        if (mpcStatus.debugIds?.txt?.group) txtFound.push(`Group: ${mpcStatus.debugIds.txt.group}`);
+        console.log(statusLine('Folder TXT', '✅', txtFound.join(' · ')));
+    } else if (mpcStatus.filePath) {
+        // File ada tapi tidak ada txt — ini normal, bukan error keras
+        console.log(statusLine('Folder TXT', '—', 'No tmdb.txt / mal.txt / group.txt in video folder'));
+    }
+
+    // ── Sub-blok 1c: Ringkasan ID Akhir ──────────────────────────────────────
+    const finalTmdb  = mpcStatus.tmdbID  || '—';
+    const finalMal   = mpcStatus.malID   || '—';
+    const finalGroup = mpcStatus.groupID || '—';
+    console.log(`   - Final IDs     : TMDb=${finalTmdb} | MAL=${finalMal} | Group=${finalGroup}`);
+    console.log(`   - ID Source     : ${debugData.idSource}`);
+
+    // ── Blok 2: Fetch & Cache ─────────────────────────────────────────────────
+    console.log(`\n📡 [2. POSTER FETCH & CACHE]`);
+    if (debugData.customImageURL) {
+        // customImage dipakai — tidak perlu fetch sama sekali
+        console.log(statusLine('Method', '🖼️', 'Custom image override — fetch skipped'));
+    } else if (!config.autoPoster) {
+        // autoPoster dimatikan oleh user
+        console.log(statusLine('Method', '—', 'autoPoster is OFF — fetch skipped'));
+    } else if (isCache) {
+        // Data dimuat dari cache lokal, tidak ada API call
+        console.log(statusLine('Method', '📂', 'Loaded from local cache (0 API calls ⚡)'));
+        console.log(statusLine('Cache Source', '✅', cleanSource));
+    } else if (posterOk) {
+        // Fetch berhasil dari API
+        console.log(statusLine('Method', '🌐', 'Fetched from API (online)'));
+        console.log(statusLine('API Source', '✅', cleanSource));
+
+        // Jika autoPoster mencari via nama file, tampilkan keyword yang dipakai
+        if (debugData.cachedPosterDebug?.searchedTmdb) {
+            const yearStr = debugData.cachedPosterDebug.year ? ` (year: ${debugData.cachedPosterDebug.year})` : '';
+            console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
+        }
+
+        // Tampilkan berapa poster yang ditemukan dan mode pemilihan
+        const posterCount = debugData.posterCount ?? 0;
+        if (posterCount > 0) {
+            const modeStr = config.randomPoster ? 'random pick' : 'first pick';
+            console.log(statusLine('Posters', '✅', `${posterCount} poster(s) available — ${modeStr}`));
+        }
+    } else {
+        // Fetch dijalankan tapi tidak menemukan apa-apa
+        console.log(statusLine('Method', '🌐', 'Fetched from API (online)'));
+
+        // Bedakan antara "tidak ketemu" dan "error jaringan/timeout"
+        if (cleanSource === 'Error') {
+            console.log(statusLine('API Result', '❌', 'Network error or API timeout — falling back to MPC-HC logo'));
+        } else {
+            // autoPoster ON tapi tidak ada hasil: tampilkan keyword yang sudah dicoba
+            if (debugData.cachedPosterDebug?.searchedTmdb) {
+                const yearStr = debugData.cachedPosterDebug.year ? ` (year: ${debugData.cachedPosterDebug.year})` : '';
+                console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
+            }
+            console.log(statusLine('API Result', '⚠️', 'No poster found — falling back to MPC-HC logo'));
+            // Saran perbaikan agar user tahu langkah selanjutnya
+            console.log(`   ${'─'.repeat(50)}`);
+            console.log(`   💡 Tip: If the wrong poster shows or nothing was found,`);
+            console.log(`      place a tmdb.txt file in the video folder with the correct TMDb ID.`);
+            console.log(`   ${'─'.repeat(50)}`);
         }
     }
 
-    console.log(`   - Final Image : ${debugData.imageSource}`);
-    console.log(`   - Big Text    : ${debugData.bigTextSource}`);
+    // ── Blok 3: Resolusi Judul & Episode ─────────────────────────────────────
+    console.log(`\n🍳 [3. TITLE & EPISODE RESOLUTION]`);
 
-    console.log(`\n🚀 [3. FINAL PAYLOAD (RPC DISCORD)]`);
+    // ── Sub-blok 3a: Judul tampil (details) ──────────────────────────────────
+    console.log(`   - Title         : ${debugData.titleSource}`);
+
+    // ── Sub-blok 3b: Episode title ────────────────────────────────────────────
+    if (debugData.fetchedEpisodeTitle) {
+        // Ditemukan dari file titles.txt / titles_sX.txt
+        const srcFile = debugData.cachedFetchedTitles?.debugInfo?.titlesFile || 'titles.txt';
+        console.log(statusLine('Episode', '✅', `"${debugData.fetchedEpisodeTitle}" (via ${srcFile})`));
+    } else if (debugData.cachedApiEpisodeTitle) {
+        // Ditemukan dari API TMDb
+        console.log(statusLine('Episode', '✅', `"${debugData.cachedApiEpisodeTitle}" (via TMDb API)`));
+    } else if (!config.autoEpisode) {
+        // autoEpisode dimatikan
+        console.log(statusLine('Episode', '—', 'autoEpisode is OFF'));
+    } else if (debugData.cachedFetchedTitles?.debugInfo?.loadedCount > 0) {
+        // File titles.txt ada dan terbaca, tapi nomor episode tidak cocok
+        const parsedEp = debugData.cachedFetchedTitles?.debugInfo?.parsedEpisode;
+        const srcFile  = debugData.cachedFetchedTitles?.debugInfo?.titlesFile || 'titles.txt';
+        if (parsedEp) {
+            console.log(statusLine('Episode', '⚠️', `titles.txt loaded but episode ${parsedEp} not found in ${srcFile}`));
+        } else {
+            console.log(statusLine('Episode', '⚠️', `titles.txt loaded but no episode number detected in filename`));
+        }
+        console.log(`   ${'─'.repeat(50)}`);
+        console.log(`   💡 Tip: Make sure your filename has a recognizable episode number,`);
+        console.log(`      e.g. "Show Name - 01.mkv" or "S01E01 Title.mkv"`);
+        console.log(`   ${'─'.repeat(50)}`);
+    } else if (mpcStatus.tmdbID || mpcStatus.malID || config.tmdb_id || config.mal_id) {
+        // Ada ID tapi TMDb tidak mengembalikan judul episode
+        const parsedEp = debugData.cachedFetchedTitles?.debugInfo?.parsedEpisode;
+        if (!parsedEp) {
+            // Tidak ada nomor episode yang terbaca dari nama file
+            console.log(statusLine('Episode', '⚠️', 'No episode number detected in filename — episode title skipped'));
+        } else {
+            // Nomor episode terbaca tapi TMDb tidak punya data untuk episode itu
+            console.log(statusLine('Episode', '⚠️', `Episode ${parsedEp} not found in TMDb — no titles.txt in folder either`));
+        }
+    } else {
+        // Tidak ada ID, tidak ada titles.txt, autoEpisode tidak bisa berbuat apa-apa
+        console.log(statusLine('Episode', '—', 'No ID and no titles.txt — episode title unavailable'));
+    }
+
+    // ── Sub-blok 3c: Gambar & Big Text ───────────────────────────────────────
+    console.log(`   - Image         : ${debugData.imageSource}`);
+    console.log(`   - Large Text    : ${debugData.bigTextSource}`);
+
+    // ── Blok 4: Payload Akhir ─────────────────────────────────────────────────
+    console.log(`\n🚀 [4. FINAL DISCORD PAYLOAD]`);
     console.log(JSON.stringify(activityPayload, null, 2));
-    console.log(`==================================================\n`);
+    console.log(`${'═'.repeat(56)}\n`);
 
     lastLoggedState = mpcStatus.isPlaying ? 'PLAYING' : (mpcStatus.isPaused ? 'PAUSED' : 'STOPPED');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG STATE BERUBAH: Play ↔ Pause ↔ Stop (bukan media baru)
+// Hanya cetak jika state benar-benar berubah dari sebelumnya
+// ─────────────────────────────────────────────────────────────────────────────
 function logStateUpdate(currentMediaState, activityPayload) {
     if (currentMediaState !== lastLoggedState) {
-        checkClearConsole(); 
-        console.log(`\n⏯️ [STATE UPDATE] -> ${currentMediaState}`);
-        console.log(`   Payload Terkirim:`);
+        checkClearConsole();
+        console.log(`\n⏯️  [STATE CHANGE] → ${currentMediaState}`);
+        console.log(`   Payload sent:`);
         console.log(JSON.stringify(activityPayload, null, 2));
-        console.log(`--------------------------------------------------\n`);
+        console.log(`${'─'.repeat(56)}\n`);
         lastLoggedState = currentMediaState;
     }
+}
+
+function logConfigChanged(changedKeys, isApiChange) {
+    console.log(`\n🔄 [LIVE CONFIG] Change detected from menu.js`);
+    if (changedKeys && changedKeys.length > 0) {
+        console.log(`   Changed keys    : ${changedKeys.join(', ')}`);
+    }
+    if (isApiChange) {
+        console.log(`   ⚙️  API settings changed — resetting TMDb cache and re-fetching...`);
+    } else {
+        console.log(`   🎨 Visual settings changed — updating Discord display...`);
+    }
+}
+
+function logTxtWatcherEvent(filename) {
+    console.log(`\n🔄 [TXT WATCHER] "${filename}" changed — reloading data...`);
+}
+
+function logDiscordWaiting() {
+    console.log('⏳ Waiting for Discord... (will connect automatically when Discord opens)');
+}
+
+function logDiscordDisconnected() {
+    console.log('\n⚠️  Disconnected from Discord! Waiting for Discord to reopen...');
 }
 
 module.exports = {
@@ -119,5 +310,9 @@ module.exports = {
     logOffline,
     resetOfflineStatus,
     logNewMedia,
-    logStateUpdate
+    logStateUpdate,
+    logConfigChanged,
+    logTxtWatcherEvent,
+    logDiscordWaiting,
+    logDiscordDisconnected,
 };

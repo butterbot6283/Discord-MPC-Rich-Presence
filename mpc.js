@@ -54,7 +54,11 @@ const getMpcStatus = async (config) => {
                     };
                     lastFilePath = filePath;
                 } catch (err) {
-                    cachedMetadata = { isError: true };
+                    // Klasifikasikan jenis error ffprobe agar logger bisa cetak pesan yang tepat
+                    let errorType = 'other';
+                    if (err.killed || err.signal === 'SIGTERM' || /timed? ?out/i.test(err.message || '')) errorType = 'timeout';
+                    else if (err.code === 'ENOENT') errorType = 'not_installed';
+                    cachedMetadata = { isError: true, errorType };
                     lastFilePath = filePath;
                 }
             }
@@ -96,6 +100,11 @@ const getMpcStatus = async (config) => {
             return parts[0] * 3600 + parts[1] * 60 + parts[2];
         };
 
+        // Kirim status ffprobe ke logger (agar bisa cetak "Timed out" / "not installed" secara akurat)
+        const ffprobeStatus = cachedMetadata && cachedMetadata.isError
+            ? { failed: true, errorType: cachedMetadata.errorType || 'other' }
+            : { failed: false };
+
         return {
             rawFileName, fileName: cleanedFileName, title: cleanedMovieName,
             position: convertTimeToSec(currentTime), duration: convertTimeToSec(totalTime),
@@ -103,11 +112,14 @@ const getMpcStatus = async (config) => {
             isPaused: /<p id="state">1<\/p>/.test(data),
             isStopped: /<p id="state">-1<\/p>/.test(data),
             tmdbID: ids.tmdbID, malID: ids.malID, groupID: ids.groupID,
-            debugIds, releaseDate, isFallback, filePath
+            debugIds, releaseDate, isFallback, filePath, ffprobeStatus
         };
     } catch (error) {
+        // MPC-HC ditutup / web interface belum aktif -> ini normal, bukan bug
         if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') return { isOffline: true };
-        return null;
+        // Selain itu (misal MPC-HC mengembalikan HTML tidak terduga, atau error jaringan lain)
+        // ini BUKAN sekadar offline -> tandai sebagai error nyata agar logger bisa melapor
+        return { isOffline: false, isError: true, errorMessage: error.message, errorCode: error.code || 'UNKNOWN' };
     }
 };
 

@@ -10,7 +10,10 @@ let isWaitingForDiscord = false;
 
 // Daftarkan fungsi SetActivity Discord ke dalam Mesin Utama
 presence.setUpdateCallback(async (payload) => {
-    try { client?.user?.setActivity(payload); } catch (e) {}
+    if (client && client.user) {
+        // Gunakan .catch() untuk menangkap error asinkron secara diam-diam!
+        client.user.setActivity(payload).catch(() => {});
+    }
 });
 
 function initDiscord() {
@@ -19,29 +22,30 @@ function initDiscord() {
     if (client) {
         try { client.destroy(); } catch (e) {}
     }
-    
+
     // Buat Instansiasi Klien yang 100% Baru
     client = new RPC.Client({ clientId: mpcId });
 
     client.on('ready', () => {
         isWaitingForDiscord = false;
         logger.logReady(mpcId);
-        
+
         presenceInterval = setInterval(async () => {
-            const status = await mpc.getMpcStatus(presence.getConfig()); 
+            const status = await mpc.getMpcStatus(presence.getConfig());
             await presence.handleStatus(status, client);
         }, 5000);
     });
 
     client.on('disconnected', () => {
-        console.log('\n⚠️ Terputus dari Discord! Menunggu Discord dibuka kembali...');
+        // Pindahkan pesan ke logger agar konsisten dengan gaya log lainnya
+        logger.logDiscordDisconnected();
         setTimeout(initDiscord, 5000); // Panggil ulang dari nol, bukan sekadar login ulang
     });
 
     // Coba Login. Jika gagal, buat klien baru lagi dalam 5 detik
     client.login().catch((err) => {
         if (!isWaitingForDiscord) {
-            console.log('⏳ Menunggu Discord dijalankan... (Otomatis menyambung jika Discord terbuka)');
+            logger.logDiscordWaiting();
             isWaitingForDiscord = true;
         }
         setTimeout(initDiscord, 5000);

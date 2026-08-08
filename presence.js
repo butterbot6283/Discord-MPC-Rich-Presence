@@ -70,12 +70,11 @@ fs.watch(configPath, (eventType) => {
                                   JSON.stringify(oldConfig.customImage) !== JSON.stringify(newConfig.customImage);
 
             if (apiChanged || visualChanged) {
-                console.log(`\n🔄 [LIVE CONFIG] Perubahan pengaturan terdeteksi dari menu.js!`);
+                // Kumpulkan nama key yang berubah agar logger bisa cetak detailnya
+                const changedKeys = Object.keys(newConfig).filter(k => JSON.stringify(oldConfig[k]) !== JSON.stringify(newConfig[k]));
+                logger.logConfigChanged(changedKeys, apiChanged);
                 if (apiChanged) {
-                    console.log(`   ⚙️ API Settings berubah -> Mereset Cache TMDb dan Menarik Ulang Data...`);
                     resetAllCaches();
-                } else {
-                    console.log(`   🎨 Visual Settings berubah -> Memperbarui tampilan Discord...`);
                 }
                 
                 if (lastMpcStatus && !lastMpcStatus.isOffline && updateCallback) {
@@ -90,11 +89,21 @@ const setUpdateCallback = (cb) => { updateCallback = cb; };
 const getConfig = () => config;
 
 async function handleStatus(status, client) {
-    lastMpcStatus = status; 
+    lastMpcStatus = status;
+
+    // Error nyata dan tak terduga (bukan sekadar MPC-HC tertutup) -> lapor sebagai error, bukan offline
+    if (status && status.isError) {
+        logger.logMpcError(status.errorCode, status.errorMessage);
+        lastPlaybackState = 'offline';
+        if (client && client.user) client.user.clearActivity().catch(() => {});
+        resetAllCaches();
+        return;
+    }
+
     if (!status || status.isOffline) {
         logger.logOffline();
         lastPlaybackState = 'offline';
-        try { client.user?.clearActivity(); } catch (err) {}
+        if (client && client.user) client.user.clearActivity().catch(() => {});
         resetAllCaches();
         return;
     }
@@ -105,7 +114,7 @@ async function handleStatus(status, client) {
     if (currentState === 'playing' || currentState !== lastPlaybackState) {
         lastPlaybackState = currentState;
         await updatePresence(status, async (payload) => {
-            try { client.user?.setActivity(payload); } catch (e) {}
+            if (client && client.user) client.user.setActivity(payload).catch(() => {});
         });
     }
 }
@@ -126,7 +135,7 @@ async function updatePresence(mpcStatus, setActivity) {
         try {
             txtWatcher = fs.watch(currentFolder, (eventType, filename) => {
                 if (filename && filename.match(/^(tmdb|mal|titles|group)\.txt$/i)) {
-                    console.log(`\n🔄 [TXT WATCHER] Perubahan file ${filename} terdeteksi! Memuat ulang data...`);
+                    logger.logTxtWatcherEvent(filename);
                     lastFetchedFileName = null;
                     lastFetchedTitlesFileName = null;
                     resetAllCaches();
@@ -250,33 +259,43 @@ async function updatePresence(mpcStatus, setActivity) {
         const currentMediaState = mpcStatus.isPlaying ? 'PLAYING' : (mpcStatus.isPaused ? 'PAUSED' : 'STOPPED');
         
         if (isNewMedia) {
-            const idSource = (mpcStatus.debugIds.metadata.imdb || mpcStatus.debugIds.metadata.mal || mpcStatus.debugIds.metadata.tmdb) ? "Metadata File" :
-                             (mpcStatus.debugIds.txt.imdb || mpcStatus.debugIds.txt.mal || mpcStatus.debugIds.txt.tmdb || mpcStatus.debugIds.txt.group) ? "Txt Folder Video" :
-                             (config.imdb_id || config.mal_id || config.tmdb_id) ? "Config.json (Manual Override)" : "TIDAK DITEMUKAN";
+            // Sumber ID: metadata file > txt folder video > config.json manual override
+            const idSource = (mpcStatus.debugIds.metadata.mal || mpcStatus.debugIds.metadata.tmdb) ? "Metadata File" :
+                             (mpcStatus.debugIds.txt.mal || mpcStatus.debugIds.txt.tmdb || mpcStatus.debugIds.txt.group) ? "Video Folder TXT" :
+                             (config.mal_id || config.tmdb_id) ? "config.json (Manual Override)" : "Not Found";
 
+            // Sumber judul yang ditampilkan (details)
             const titleSource = (config.customText?.trim()) ? `Config customText -> "${config.customText}"` :
-                                (!showTitle && finalEpisodeTitle) ? `autoPoster OFF -> Fallback ke Nama File "${mpcStatus.fileName}"` :
-                                (finalEpisodeTitle) ? `Judul Episode -> "${finalEpisodeTitle}"` :
-                                (!config.autoEpisode && !fetchedEpisodeTitle) ? `TIDAK DITEMUKAN -> autoEpisode (Nonaktif di Config)` :
-                                (!mpcStatus.isFallback && mpcStatus.title) ? `Metadata Video -> "${mpcStatus.title}"` :
-                                `TIDAK DITEMUKAN -> Fallback ke Nama File "${mpcStatus.fileName}"`;
+                                (!showTitle && finalEpisodeTitle) ? `autoPoster OFF -> Fallback to filename "${mpcStatus.fileName}"` :
+                                (finalEpisodeTitle) ? `Episode Title -> "${finalEpisodeTitle}"` :
+                                (!config.autoEpisode && !fetchedEpisodeTitle) ? `Not Found -> autoEpisode is OFF in config` :
+                                (!mpcStatus.isFallback && mpcStatus.title) ? `Video Metadata -> "${mpcStatus.title}"` :
+                                `Not Found -> Fallback to filename "${mpcStatus.fileName}"`;
 
-            const imageSource = (hasCustomImage) ? `Config customImage -> Aktif (${validCustomImages.length} URL)` :
-                                (!config.autoPoster) ? `TIDAK DITEMUKAN -> autoPoster (Nonaktif di Config)` :
-                                (cachedPosterSource && cachedPosterSource !== 'Not Found' && cachedPosterSource !== 'Error') ? `Sukses via ${cachedPosterSource} (Memuat ${cachedPosters.length} Poster)` :
-                                `TIDAK DITEMUKAN -> Fallback ke Logo MPC-HC Default`;
+            // Sumber gambar (poster)
+            const imageSource = (hasCustomImage) ? `Config customImage -> Active (${validCustomImages.length} URL${validCustomImages.length > 1 ? 's' : ''})` :
+                                (!config.autoPoster) ? `Not Found -> autoPoster is OFF in config` :
+                                (cachedPosterSource && cachedPosterSource !== 'Not Found' && cachedPosterSource !== 'Error') ? `Success via ${cachedPosterSource} (${cachedPosters.length} poster${cachedPosters.length !== 1 ? 's' : ''} loaded)` :
+                                `Not Found -> Fallback to default MPC-HC logo`;
 
+            // Sumber teks besar (large image text)
             const bigTextSource = (config.customBigText?.trim()) ? `Config customBigText -> "${config.customBigText}"` :
-                                  (!showTitle && finalEpisodeTitle && mpcStatus.isPaused) ? `Di-override dengan Judul Episode -> "${finalEpisodeTitle}"` :
-                                  (config.autoDate && cachedTmdbReleaseDate) ? `API TMDb Date -> "${cachedTmdbReleaseDate}"` :
-                                  (!config.autoDate && !fetchedReleaseDate) ? `TIDAK DITEMUKAN -> autoDate (Nonaktif di Config)` :
+                                  (!showTitle && finalEpisodeTitle && mpcStatus.isPaused) ? `Overridden with Episode Title -> "${finalEpisodeTitle}"` :
+                                  (config.autoDate && cachedTmdbReleaseDate) ? `TMDb API Date -> "${cachedTmdbReleaseDate}"` :
+                                  (!config.autoDate && !fetchedReleaseDate) ? `Not Found -> autoDate is OFF in config` :
                                   (fetchedReleaseDate) ? `titles.txt -> "${fetchedReleaseDate}"` :
-                                  (mpcStatus.releaseDate) ? `Metadata Video -> "${mpcStatus.releaseDate}"` :
-                                  `TIDAK DITEMUKAN -> Fallback ke "MPC-HC"`;
+                                  (mpcStatus.releaseDate) ? `Video Metadata -> "${mpcStatus.releaseDate}"` :
+                                  `Not Found -> Fallback to "MPC-HC"`;
 
-            const customImageURL = hasCustomImage ? "used" : null; 
-            const debugData = { idSource, titleSource, imageSource, bigTextSource, cachedFetchedTitles, cachedPosterDebug, cachedPosterSource, customImageURL, cachedApiEpisodeTitle: config.autoEpisode ? cachedApiEpisodeTitle : null, fetchedEpisodeTitle };
-            
+            const customImageURL = hasCustomImage ? "used" : null;
+            const debugData = {
+                idSource, titleSource, imageSource, bigTextSource,
+                cachedFetchedTitles, cachedPosterDebug, cachedPosterSource, customImageURL,
+                cachedApiEpisodeTitle: config.autoEpisode ? cachedApiEpisodeTitle : null,
+                fetchedEpisodeTitle,
+                posterCount: cachedPosters.length,
+            };
+
             logger.logNewMedia(mpcStatus, activityPayload, debugData, config);
         } else {
             logger.logStateUpdate(currentMediaState, activityPayload);

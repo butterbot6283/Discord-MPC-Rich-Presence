@@ -10,6 +10,7 @@ let mpcOfflineLogged = false;
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILITAS CONSOLE
 // ─────────────────────────────────────────────────────────────────────────────
+
 // Membersihkan terminal secara menyeluruh sesuai platform OS
 function deepClearConsole() {
     try {
@@ -74,6 +75,17 @@ function resetOfflineStatus() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LOG UTAMA: Error tak terduga saat menghubungi MPC-HC (BUKAN sekadar "MPC-HC tertutup")
+// Contoh: web interface mengirim HTML tidak terduga, error jaringan lokal, dll
+// ─────────────────────────────────────────────────────────────────────────────
+function logMpcError(errorCode, errorMessage) {
+    console.log(`\n❌ [MPC-HC ERROR] Unexpected error while contacting MPC-HC web interface`);
+    console.log(`   Code    : ${errorCode || 'UNKNOWN'}`);
+    console.log(`   Message : ${errorMessage || '(no message)'}`);
+    console.log(`   💡 Tip: Check that the Web Interface port (13579) isn't blocked or used by another app.`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOG UTAMA: Media baru terdeteksi
 // Ini adalah log paling penting — cetak seluruh pipeline dari awal sampai akhir
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,9 +99,9 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     const cleanSource = sourceInfo.replace('[CACHE] ', '');
 
     // Tentukan apakah setiap step berhasil atau gagal untuk badge ✅/⚠️/❌
-    const ffprobeTimeout = mpcStatus._ffprobeTimedOut; // flag opsional dari mpc.js
-    const txtOk          = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.mal || mpcStatus.debugIds?.txt?.group;
-    const posterOk       = cleanSource !== 'Not Found' && cleanSource !== 'Error' && debugData.cachedPosterSource;
+    const txtOk    = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.mal || mpcStatus.debugIds?.txt?.group;
+    const posterOk = cleanSource !== 'Not Found' && cleanSource !== 'Error' && debugData.cachedPosterSource;
+    const apiErrors = debugData.cachedPosterDebug?.apiErrors || [];
 
     // ── Header ────────────────────────────────────────────────────────────────
     console.log(`\n${'═'.repeat(56)}`);
@@ -99,14 +111,13 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
     // ── Blok Config Override ──────────────────────────────────────────────────
     // Tampilkan hanya jika ada override aktif dari config.json
-    const hasOverride = config.customText || config.customBigText || debugData.customImageURL || config.tmdb_id || config.mal_id || config.romajiTitle;
-
+    const hasOverride = config.customText || config.customBigText || debugData.customImageURL
+                        || config.tmdb_id || config.mal_id;
     if (hasOverride) {
         console.log(`\n⚙️  [CONFIG OVERRIDES ACTIVE]`);
         if (config.customText)       console.log(`   - customText    : "${config.customText}"`);
         if (config.customBigText)    console.log(`   - customBigText : "${config.customBigText}"`);
         if (debugData.customImageURL)console.log(`   - customImage   : Custom image URL in use`);
-        if (config.romajiTitle)      console.log(`   - romajiTitle   : Enabled (Prefer Japanese Transliteration)`);
         if (config.tmdb_id || config.mal_id)
             console.log(`   - Manual ID     : TMDb=${config.tmdb_id || '—'}, MAL=${config.mal_id || '—'}`);
     }
@@ -119,9 +130,16 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
     // ── Sub-blok 1a: FFprobe ──────────────────────────────────────────────────
     // Cetak detail apa saja yang berhasil dibaca dari metadata file
-    if (ffprobeTimeout) {
+    const ffprobeStatus = mpcStatus.ffprobeStatus || { failed: false };
+    if (ffprobeStatus.failed && ffprobeStatus.errorType === 'timeout') {
         // FFprobe tidak menjawab dalam 3 detik (disk lambat / file di jaringan)
         console.log(statusLine('FFprobe', '⏱️', 'Timed out (>3s) — falling back to filename'));
+    } else if (ffprobeStatus.failed && ffprobeStatus.errorType === 'not_installed') {
+        // ffprobe tidak ditemukan sama sekali di PATH sistem
+        console.log(statusLine('FFprobe', '❌', 'Not found in system PATH — install FFmpeg to enable metadata reading'));
+    } else if (ffprobeStatus.failed) {
+        // Error lain: file corrupt, permission denied, dll
+        console.log(statusLine('FFprobe', '⚠️', 'Failed to read metadata (corrupt file or permission issue)'));
     } else if (mpcStatus.debugIds?.metadata?.tmdb || mpcStatus.debugIds?.metadata?.mal) {
         // Metadata ditemukan: cetak apa saja yang ada
         const found = [];
@@ -160,6 +178,7 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
     // ── Blok 2: Fetch & Cache ─────────────────────────────────────────────────
     console.log(`\n📡 [2. POSTER FETCH & CACHE]`);
+
     if (debugData.customImageURL) {
         // customImage dipakai — tidak perlu fetch sama sekali
         console.log(statusLine('Method', '🖼️', 'Custom image override — fetch skipped'));
@@ -177,7 +196,9 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
         // Jika autoPoster mencari via nama file, tampilkan keyword yang dipakai
         if (debugData.cachedPosterDebug?.searchedTmdb) {
-            const yearStr = debugData.cachedPosterDebug.year ? ` (year: ${debugData.cachedPosterDebug.year})` : '';
+            const yearStr = debugData.cachedPosterDebug.year
+                ? ` (year: ${debugData.cachedPosterDebug.year})`
+                : '';
             console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
         }
 
@@ -191,16 +212,23 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
         // Fetch dijalankan tapi tidak menemukan apa-apa
         console.log(statusLine('Method', '🌐', 'Fetched from API (online)'));
 
-        // Bedakan antara "tidak ketemu" dan "error jaringan/timeout"
-        if (cleanSource === 'Error') {
-            console.log(statusLine('API Result', '❌', 'Network error or API timeout — falling back to MPC-HC logo'));
+        // Bedakan antara "tidak ketemu (404/no results)" dan "error jaringan/timeout nyata"
+        if (cleanSource === 'Error' || apiErrors.length > 0) {
+            console.log(statusLine('API Result', '❌', 'Request failed — falling back to MPC-HC logo'));
+            // Cetak setiap error nyata yang tertangkap dari poster.js (mis. ECONNABORTED, timeout, 500)
+            apiErrors.forEach(msg => {
+                console.log(statusLine('  ↳ Error', '❌', msg));
+            });
         } else {
-            // autoPoster ON tapi tidak ada hasil: tampilkan keyword yang sudah dicoba
+            // autoPoster ON tapi genuinely tidak ada hasil: tampilkan keyword yang sudah dicoba
             if (debugData.cachedPosterDebug?.searchedTmdb) {
-                const yearStr = debugData.cachedPosterDebug.year ? ` (year: ${debugData.cachedPosterDebug.year})` : '';
+                const yearStr = debugData.cachedPosterDebug.year
+                    ? ` (year: ${debugData.cachedPosterDebug.year})`
+                    : '';
                 console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
             }
-            console.log(statusLine('API Result', '⚠️', 'No poster found — falling back to MPC-HC logo'));
+            console.log(statusLine('API Result', '⚠️', 'No matching title found — falling back to MPC-HC logo'));
+
             // Saran perbaikan agar user tahu langkah selanjutnya
             console.log(`   ${'─'.repeat(50)}`);
             console.log(`   💡 Tip: If the wrong poster shows or nothing was found,`);
@@ -281,6 +309,10 @@ function logStateUpdate(currentMediaState, activityPayload) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG CONFIG BERUBAH: Dipanggil dari presence.js saat fs.watch mendeteksi edit
+// Dua varian: API settings (perlu reset cache) vs visual-only settings
+// ─────────────────────────────────────────────────────────────────────────────
 function logConfigChanged(changedKeys, isApiChange) {
     console.log(`\n🔄 [LIVE CONFIG] Change detected from menu.js`);
     if (changedKeys && changedKeys.length > 0) {
@@ -293,10 +325,16 @@ function logConfigChanged(changedKeys, isApiChange) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG TXT WATCHER: Dipanggil dari presence.js saat file .txt di folder berubah
+// ─────────────────────────────────────────────────────────────────────────────
 function logTxtWatcherEvent(filename) {
     console.log(`\n🔄 [TXT WATCHER] "${filename}" changed — reloading data...`);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG DISCORD: Pesan koneksi dari index.js
+// ─────────────────────────────────────────────────────────────────────────────
 function logDiscordWaiting() {
     console.log('⏳ Waiting for Discord... (will connect automatically when Discord opens)');
 }
@@ -311,6 +349,7 @@ module.exports = {
     resetOfflineStatus,
     logNewMedia,
     logStateUpdate,
+    logMpcError,
     logConfigChanged,
     logTxtWatcherEvent,
     logDiscordWaiting,

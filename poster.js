@@ -120,7 +120,9 @@ const fetchPoster = async (tmdbID, malID, groupID, actualFilePath, cleanedName) 
       .replace(/\s{2,}/g, ' ') 
       .trim();
 
-  let debugInfo = { cleanTitle: cleanTitleForSearch, year: year, searchedTmdb: false };
+  // apiErrors: menyimpan pesan error nyata (timeout, network down, dll) agar logger
+  // bisa membedakan "benar-benar tidak ketemu" vs "gagal karena error"
+  let debugInfo = { cleanTitle: cleanTitleForSearch, year: year, searchedTmdb: false, apiErrors: [] };
 
   // =====================================================================
   // SISTEM MANAJEMEN CACHE LOKAL (OMNI-CACHE)
@@ -245,11 +247,17 @@ const fetchPoster = async (tmdbID, malID, groupID, actualFilePath, cleanedName) 
             const details = await fetchTmdbDetails(id, primaryType, config, season, episode, groupID, API_TOKEN);
             if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${primaryType}/${id}`, retry: false, source: sourceName, debugInfo });
         } catch (e) {
+            // ID valid tapi tipe (tv/movie) salah -> coba tipe sebaliknya sebelum menyerah
+            const isNotFound = e.response && e.response.status === 404;
+            if (!isNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${primaryType}): ${e.code || e.message}`);
             try {
                 await axios.get(`https://api.themoviedb.org/3/${fallbackType}/${id}`, { headers: { Authorization: `Bearer ${API_TOKEN}` }, timeout: 5000 });
                 const details = await fetchTmdbDetails(id, fallbackType, config, season, episode, groupID, API_TOKEN); 
                 if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${id}`, retry: false, source: sourceName + ` (Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
-            } catch (err) {}
+            } catch (err) {
+                const fallbackNotFound = err.response && err.response.status === 404;
+                if (!fallbackNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${fallbackType}): ${err.code || err.message}`);
+            }
         }
         return null;
     };
@@ -289,12 +297,17 @@ const fetchPoster = async (tmdbID, malID, groupID, actualFilePath, cleanedName) 
             const details = await fetchTmdbDetails(fallbackMedia.id, fallbackType, config, season, episode, groupID, API_TOKEN);
             if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${fallbackMedia.id}`, retry: false, source: `TMDb (AutoPoster - Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
           }
-      } catch(err) {}
+      } catch(err) {
+          // Pencarian filename gagal total (network down, rate limit, dll) -> catat agar logger tahu
+          debugInfo.apiErrors.push(`TMDb filename search: ${err.code || err.message}`);
+      }
     }
 
     return saveCacheAndReturn({ posters: [], showTitle: null, romajiTitle: null, fetchedEpisodes: null, tmdbUrl: null, retry: false, source: 'Not Found', debugInfo });
-  } catch (err) { 
-      return { posters: [], showTitle: null, romajiTitle: null, fetchedEpisodes: null, tmdbUrl: null, retry: true, source: 'Error', debugInfo }; 
+  } catch (err) {
+      // Error tak terduga di luar semua try/catch internal (mis. Jikan down, config.json rusak)
+      debugInfo.apiErrors.push(`Unexpected: ${err.code || err.message}`);
+      return { posters: [], showTitle: null, romajiTitle: null, fetchedEpisodes: null, tmdbUrl: null, retry: true, source: 'Error', debugInfo };
   }
 };
 

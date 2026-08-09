@@ -257,11 +257,14 @@ Contains a single MyAnimeList ID (numeric, e.g. `21`).
 
 ### `group.txt`
 
-Contains a TMDb Episode Group ID (alphanumeric string, e.g. `69afde88e6719c2c9add36ce`). When present, episode lookup uses the episode group ordering instead of the standard season ordering. Useful for shows with alternate episode orderings (e.g. Dragon Ball, One Piece).
+Contains a TMDb Episode Group ID (alphanumeric string, e.g. `69afde2c03e49b16d980f4d7`). When present, episode lookup uses the episode group ordering instead of the standard season ordering. Useful for shows with alternate episode orderings (e.g. Dragon Ball, One Piece).
 
 ```
-69afde88e6719c2c9add36ce
+69afde2c03e49b16d980f4d7
 ```
+
+<img width="1048" height="469" alt="image" src="https://github.com/user-attachments/assets/6763b88a-ff90-46f0-9a09-02dc57b9ca1e" />
+
 
 ### `titles.txt` / `titles_sX.txt`
 

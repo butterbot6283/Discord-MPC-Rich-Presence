@@ -146,7 +146,8 @@ const fetchTmdbDetails = async (id, type, config, season, episode, groupID, apiT
 
         let standardTitle = data.name || data.title;
         let romajiTitle = null;
-
+		let tagline = data.tagline && data.tagline.trim() !== "" ? data.tagline.trim() : null;
+        let mainReleaseDate = data.release_date || data.first_air_date || null;
         // Tarik Romaji secara paksa untuk di-cache
         if (data.alternative_titles) {
             const altTitles = data.alternative_titles.results || data.alternative_titles.titles || [];
@@ -197,7 +198,7 @@ const fetchTmdbDetails = async (id, type, config, season, episode, groupID, apiT
             } catch(e) {}
         }
 
-        return { posters: finalPosters, showTitle: standardTitle, romajiTitle: romajiTitle, fetchedEpisodes };
+        return { posters: finalPosters, showTitle: standardTitle, romajiTitle: romajiTitle, fetchedEpisodes, tagline, mainReleaseDate };
     } catch (err) { return null; }
 };
 
@@ -293,7 +294,8 @@ const fetchMetadata = async (tmdbID, malID, groupID, actualFilePath, cleanedName
               showTitle: finalShowTitle, 
               tmdbUrl: seriesData.tmdbUrl,
               tmdbEpisodeTitle: epData ? epData.tmdbEpisodeTitle : null,
-              tmdbReleaseDate: epData ? epData.tmdbReleaseDate : null,
+              tmdbReleaseDate: epData ? epData.tmdbReleaseDate : (seriesData.mainReleaseDate || null),
+              tmdbTagline: seriesData.tagline || null,
               source: `[CACHE] ` + (epData ? epData.source : seriesData.source || 'TMDb'),
               retry: false, debugInfo: seriesData.debugInfo
           };
@@ -307,7 +309,9 @@ const fetchMetadata = async (tmdbID, malID, groupID, actualFilePath, cleanedName
               cacheData[cacheKey] = {
                   configState: currentConfigState, 
                   showTitle: result.showTitle, 
-                  romajiTitle: result.romajiTitle, // Simpan ke json!
+                  romajiTitle: result.romajiTitle,
+                  tagline: result.tagline || null,
+                  mainReleaseDate: formatApiDate(result.mainReleaseDate) || null,
                   posters: result.posters,
                   tmdbUrl: result.tmdbUrl, 
                   source: result.source.replace('[CACHE] ', ''), 
@@ -340,7 +344,8 @@ const fetchMetadata = async (tmdbID, malID, groupID, actualFilePath, cleanedName
           if (!config.autoPoster) result.showTitle = null;
           
           result.tmdbEpisodeTitle = currentEpData ? currentEpData.tmdbEpisodeTitle : null;
-          result.tmdbReleaseDate = currentEpData ? currentEpData.tmdbReleaseDate : null;
+          result.tmdbReleaseDate = currentEpData ? currentEpData.tmdbReleaseDate : cacheData[cacheKey].mainReleaseDate;
+          result.tmdbTagline = cacheData[cacheKey].tagline;
           
           try { fs.writeFileSync(targetCachePath, JSON.stringify(cacheData, null, 4)); } catch (err) {}
       }
@@ -365,15 +370,14 @@ const fetchMetadata = async (tmdbID, malID, groupID, actualFilePath, cleanedName
         try {
             await axios.get(`https://api.themoviedb.org/3/${primaryType}/${id}`, { headers: { Authorization: `Bearer ${API_TOKEN}` }, timeout: 5000 });
             const details = await fetchTmdbDetails(id, primaryType, config, season, episode, groupID, API_TOKEN);
-            if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${primaryType}/${id}`, retry: false, source: sourceName, debugInfo });
+            if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${primaryType}/${id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName, debugInfo });
         } catch (e) {
-            // ID valid tapi tipe (tv/movie) salah -> coba tipe sebaliknya sebelum menyerah
             const isNotFound = e.response && e.response.status === 404;
             if (!isNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${primaryType}): ${e.code || e.message}`);
             try {
                 await axios.get(`https://api.themoviedb.org/3/${fallbackType}/${id}`, { headers: { Authorization: `Bearer ${API_TOKEN}` }, timeout: 5000 });
                 const details = await fetchTmdbDetails(id, fallbackType, config, season, episode, groupID, API_TOKEN); 
-                if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${id}`, retry: false, source: sourceName + ` (Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
+                if (details) return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName + ` (Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
             } catch (err) {
                 const fallbackNotFound = err.response && err.response.status === 404;
                 if (!fallbackNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${fallbackType}): ${err.code || err.message}`);
@@ -470,7 +474,7 @@ const fetchMetadata = async (tmdbID, malID, groupID, actualFilePath, cleanedName
             const details = await fetchTmdbDetails(media.id, usedType, config, season, episode, groupID, API_TOKEN);
             if (details) {
                 const sourceMsg = `TMDb (AutoPoster - ${usedType.toUpperCase()})`;
-                return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${usedType}/${media.id}`, retry: false, source: sourceMsg, debugInfo });
+                return saveCacheAndReturn({ posters: details.posters, showTitle: details.showTitle, romajiTitle: details.romajiTitle, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${usedType}/${media.id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceMsg, debugInfo });
             }
           }
       } catch(err) {

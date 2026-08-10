@@ -48,6 +48,16 @@ function statusLine(label, icon, message) {
     return `   - ${paddedLabel}: ${icon} ${message}`;
 }
 
+// Bangun teks "(year: 2014 — ...)" untuk baris Search Query.
+// yearMatched: true = tahun cocok dengan hasil (paling akurat), false = tahun TIDAK cocok
+// tapi tetap pakai hasil judul teratas (year cuma pengakurat, bukan filter wajib), null/undefined = tanpa info tahun.
+function buildYearStr(year, yearMatched) {
+    if (!year) return '';
+    if (yearMatched === true) return ` (year: ${year} ✓ matched)`;
+    if (yearMatched === false) return ` (year: ${year} — no exact match, using closest title)`;
+    return ` (year: ${year})`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOG UTAMA: Siap terhubung ke Discord
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,35 +139,28 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     console.log(`   - Order Mode    : ${isGroup ? '👥 EPISODE GROUP (absolute order)' : '📺 SEASON (standard order)'}`);
 
     // ── Sub-blok 1a: FFprobe ──────────────────────────────────────────────────
-    // Cetak detail apa saja yang berhasil dibaca dari metadata file
+    // FFprobe di sini HANYA membaca title tag dari file video.
+    // ID (TMDb/MAL) dan tanggal rilis TIDAK diambil dari metadata video.
     const ffprobeStatus = mpcStatus.ffprobeStatus || { failed: false };
     if (ffprobeStatus.failed && ffprobeStatus.errorType === 'timeout') {
         // FFprobe tidak menjawab dalam 3 detik (disk lambat / file di jaringan)
         console.log(statusLine('FFprobe', '⏱️', 'Timed out (>3s) — falling back to filename'));
     } else if (ffprobeStatus.failed && ffprobeStatus.errorType === 'not_installed') {
         // ffprobe tidak ditemukan sama sekali di PATH sistem
-        console.log(statusLine('FFprobe', '❌', 'Not found in system PATH — install FFmpeg to enable metadata reading'));
+        console.log(statusLine('FFprobe', '❌', 'Not found in system PATH — install FFmpeg to enable title reading'));
     } else if (ffprobeStatus.failed) {
         // Error lain: file corrupt, permission denied, dll
         console.log(statusLine('FFprobe', '⚠️', 'Failed to read metadata (corrupt file or permission issue)'));
-    } else if (mpcStatus.debugIds?.metadata?.tmdb || mpcStatus.debugIds?.metadata?.mal) {
-        // Metadata ditemukan: cetak apa saja yang ada
-        const found = [];
-        if (!mpcStatus.isFallback && mpcStatus.title) found.push(`Title: "${mpcStatus.title}"`);
-        if (mpcStatus.debugIds.metadata.tmdb) found.push(`TMDb ID: ${mpcStatus.debugIds.metadata.tmdb}`);
-        if (mpcStatus.debugIds.metadata.mal)  found.push(`MAL ID: ${mpcStatus.debugIds.metadata.mal}`);
-        if (mpcStatus.releaseDate)             found.push(`Date: ${mpcStatus.releaseDate}`);
-        console.log(statusLine('FFprobe', '✅', found.join(' · ')));
     } else if (!mpcStatus.isFallback && mpcStatus.title) {
-        // Ada judul dari metadata tapi tidak ada ID
-        console.log(statusLine('FFprobe', '✅', `Title found: "${mpcStatus.title}" (no embedded IDs)`));
+        // Title tag ditemukan dan dipakai
+        console.log(statusLine('FFprobe', '✅', `Title tag found: "${mpcStatus.title}"`));
     } else {
-        // Tidak ada metadata sama sekali — fallback ke nama file
-        console.log(statusLine('FFprobe', '⚠️', 'No embedded metadata — using filename as title'));
+        // Tidak ada title tag — fallback ke nama file
+        console.log(statusLine('FFprobe', '—', 'No title tag in file — using filename as title'));
     }
 
     // ── Sub-blok 1b: TXT Files ────────────────────────────────────────────────
-    // Cetak hasil baca tmdb.txt / mal.txt / group.txt dari folder video
+    // Cetak hasil baca tmdb.txt / mal.txt / group.txt dari folder video (prioritas ID pertama)
     if (txtOk) {
         const txtFound = [];
         if (mpcStatus.debugIds?.txt?.tmdb)  txtFound.push(`TMDb: ${mpcStatus.debugIds.txt.tmdb}`);
@@ -196,9 +199,7 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
         // Jika autoPoster mencari via nama file, tampilkan keyword yang dipakai
         if (debugData.cachedPosterDebug?.searchedTmdb) {
-            const yearStr = debugData.cachedPosterDebug.year
-                ? ` (year: ${debugData.cachedPosterDebug.year})`
-                : '';
+            const yearStr = buildYearStr(debugData.cachedPosterDebug.year, debugData.cachedPosterDebug.yearMatched);
             console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
         }
 
@@ -222,9 +223,7 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
         } else {
             // autoPoster ON tapi genuinely tidak ada hasil: tampilkan keyword yang sudah dicoba
             if (debugData.cachedPosterDebug?.searchedTmdb) {
-                const yearStr = debugData.cachedPosterDebug.year
-                    ? ` (year: ${debugData.cachedPosterDebug.year})`
-                    : '';
+                const yearStr = buildYearStr(debugData.cachedPosterDebug.year, debugData.cachedPosterDebug.yearMatched);
                 console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
             }
             console.log(statusLine('API Result', '⚠️', 'No matching title found — falling back to MPC-HC logo'));

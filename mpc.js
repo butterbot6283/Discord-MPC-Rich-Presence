@@ -4,7 +4,7 @@ const path = require('path');
 const util = require('util');
 const { execFile } = require('child_process');
 const execFilePromise = util.promisify(execFile);
-const { fetchIdsFromTxt } = require('./titles');
+const { fetchIdsFromTxt } = require('./metadata');
 const { cleanName } = require('./utils');
 
 let lastFilePath = null;
@@ -27,10 +27,10 @@ const getMpcStatus = async (config) => {
         const filePathMatch = data.match(/<p id="filepath">(.+?)<\/p>/);
         const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
 
-        let ids = { tmdbID: null, malID: null };
-        let debugIds = { metadata: {tmdb: null, mal: null}, txt: {tmdb: null, mal: null}, config: {tmdb: config.tmdb_id, mal: config.mal_id} };
+        let ids = { tmdbID: null, malID: null, groupID: null };
+        // Prioritas ID: 1) txt folder video (tmdb.txt/mal.txt) -> 2) config.json -> 3) auto via nama file (di metadata.js)
+        let debugIds = { txt: {tmdb: null, mal: null, group: null}, config: {tmdb: config.tmdb_id, mal: config.mal_id} };
         
-        let releaseDate = null;
         let movieName = null;
         let isFallback = false;
 
@@ -38,6 +38,9 @@ const getMpcStatus = async (config) => {
             if (filePath !== lastFilePath || !cachedMetadata) {
                 try {
                     // Eksekusi ffprobe dengan BATAS WAKTU 3 detik agar tidak bengong (hang)
+                    // CATATAN: ffprobe di sini HANYA dipakai untuk membaca judul (title tag).
+                    // ID (TMDb/MAL) dan tanggal rilis TIDAK diambil dari metadata video sama sekali,
+                    // karena sumber itu cuma hasil percobaan embed manual via mkvmerge, bukan sumber yang diandalkan.
                     const { stdout } = await execFilePromise('ffprobe', [
                         '-v', 'quiet', '-print_format', 'json', '-show_format', filePath
                     ], { timeout: 3000 });
@@ -48,10 +51,7 @@ const getMpcStatus = async (config) => {
                         const foundKey = Object.keys(tags).find(k => k.toLowerCase() === keyName.toLowerCase());
                         return foundKey ? tags[foundKey] : null;
                     };
-                    cachedMetadata = {
-                        metaTitle: getTag('title'), tmdbID: getTag('tmdb_ID'), malID: getTag('MAL_ID'),
-                        releaseDate: getTag('DATE_RELEASED') || getTag('date') || null, isError: false
-                    };
+                    cachedMetadata = { metaTitle: getTag('title'), isError: false };
                     lastFilePath = filePath;
                 } catch (err) {
                     // Klasifikasikan jenis error ffprobe agar logger bisa cetak pesan yang tepat
@@ -63,32 +63,27 @@ const getMpcStatus = async (config) => {
                 }
             }
 
-            if (cachedMetadata && !cachedMetadata.isError) {
-                ids = { tmdbID: cachedMetadata.tmdbID, malID: cachedMetadata.malID };
-                debugIds.metadata = { tmdb: ids.tmdbID, mal: ids.malID };
-            }
-            // BARU: Ambil GroupID dari Txt
+            // BARU: Ambil ID (tmdb/mal/group) dari Txt -- prioritas pertama
             const videoDir = path.dirname(filePath);
             const txtIds = fetchIdsFromTxt(videoDir);
-            
-            if (!ids.tmdbID || !ids.malID || txtIds.groupID) {
-                if (txtIds.tmdbID && !ids.tmdbID) ids.tmdbID = txtIds.tmdbID;
-                if (txtIds.malID && !ids.malID) ids.malID = txtIds.malID;
-                ids.groupID = txtIds.groupID || null;
-                debugIds.txt = { tmdb: txtIds.tmdbID, mal: txtIds.malID, group: txtIds.groupID };
-            }
+            if (txtIds.tmdbID) ids.tmdbID = txtIds.tmdbID;
+            if (txtIds.malID) ids.malID = txtIds.malID;
+            ids.groupID = txtIds.groupID || null;
+            debugIds.txt = { tmdb: txtIds.tmdbID, mal: txtIds.malID, group: txtIds.groupID };
+
+            // Prioritas kedua: config.json manual override (hanya dipakai jika txt kosong)
             if (!ids.tmdbID) ids.tmdbID = config.tmdb_id?.trim() || null;
             if (!ids.malID) ids.malID = config.mal_id?.trim() || null;
+            // Jika keduanya masih null, autoPoster di metadata.js akan mencari via nama file (prioritas terakhir)
 
             const metaTitle = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.metaTitle : null;
-            releaseDate = cachedMetadata && !cachedMetadata.isError ? cachedMetadata.releaseDate : null;
 
             if (config.customText && config.customText.trim()) movieName = config.customText;
             else if (metaTitle && metaTitle.length <= 128) movieName = metaTitle;
             else { movieName = cleanedFileName; isFallback = true; }
         } else {
             movieName = cleanedFileName; isFallback = true;
-            ids = { tmdbID: config.tmdb_id?.trim() || null, malID: config.mal_id?.trim() || null };
+            ids = { tmdbID: config.tmdb_id?.trim() || null, malID: config.mal_id?.trim() || null, groupID: null };
         }
 
         const cleanedMovieName = cleanName(movieName, config);
@@ -112,7 +107,7 @@ const getMpcStatus = async (config) => {
             isPaused: /<p id="state">1<\/p>/.test(data),
             isStopped: /<p id="state">-1<\/p>/.test(data),
             tmdbID: ids.tmdbID, malID: ids.malID, groupID: ids.groupID,
-            debugIds, releaseDate, isFallback, filePath, ffprobeStatus
+            debugIds, isFallback, filePath, ffprobeStatus
         };
     } catch (error) {
         // MPC-HC ditutup / web interface belum aktif -> ini normal, bukan bug

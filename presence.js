@@ -23,7 +23,7 @@ let lastMpcStatus = null;
 // Cache Terpadu API & Gambar
 let cachedPosters = [], currentPosterIndex = 0, lastSlideshowTick = 0;
 let currentCustomImageIndex = 0; 
-let cachedShowTitle = null, cachedApiEpisodeTitle = null, cachedPosterSource = null, cachedTmdbUrl = null, cachedTmdbReleaseDate = null, cachedPosterDebug = null;
+let cachedShowTitle = null, cachedApiEpisodeTitle = null, cachedPosterSource = null, cachedTmdbUrl = null, cachedTmdbReleaseDate = null, cachedPosterDebug = null, cachedTmdbTagline = null;
 let lastFetchedFileName = null, lastTmdbId = null, lastMalId = null, lastConfigTmdbId = null, lastConfigMalId = null, lastAutoTrigger = null;
 let lastFetchedTitlesFileName = null, cachedFetchedTitles = null;
 
@@ -34,7 +34,7 @@ const resetAllCaches = () => {
     mpc.resetMpcCache();
     cachedFetchedTitles = null; lastFetchedTitlesFileName = null; 
     cachedPosters = []; currentPosterIndex = 0; currentCustomImageIndex = 0;
-    cachedShowTitle = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedTmdbUrl = null; cachedTmdbReleaseDate = null;
+    cachedShowTitle = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedTmdbUrl = null; cachedTmdbReleaseDate = null; cachedTmdbTagline = null;
     lastFetchedFileName = null; lastTmdbId = null; lastMalId = null;
     lastConfigTmdbId = null; lastConfigMalId = null; lastAutoTrigger = null;
 };
@@ -165,7 +165,7 @@ async function updatePresence(mpcStatus, setActivity) {
     if (needsFetch && (mpcStatus.tmdbID || mpcStatus.malID || config.tmdb_id || config.mal_id || config.autoPoster || config.autoEpisode || config.autoDate)) {
         if (isNewMedia || mpcStatus.rawFileName !== lastFetchedFileName) {
             cachedPosters = []; currentPosterIndex = 0; currentCustomImageIndex = 0;
-            cachedShowTitle = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedTmdbUrl = null; cachedTmdbReleaseDate = null;
+            cachedShowTitle = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedTmdbUrl = null; cachedTmdbReleaseDate = null; cachedTmdbTagline = null;
         }
 
         const result = await fetchMetadata(mpcStatus.tmdbID, mpcStatus.malID, mpcStatus.groupID, mpcStatus.filePath, utils.cleanName(mpcStatus.rawFileName, config));
@@ -182,6 +182,7 @@ async function updatePresence(mpcStatus, setActivity) {
             cachedApiEpisodeTitle = result.tmdbEpisodeTitle || null;
             cachedTmdbUrl = result.tmdbUrl || null;
             cachedTmdbReleaseDate = result.tmdbReleaseDate || null; 
+			cachedTmdbTagline = result.tmdbTagline || null;
             cachedPosterSource = result.source || 'Not Found'; 
             cachedPosterDebug = result.debugInfo || null;
             
@@ -266,6 +267,26 @@ async function updatePresence(mpcStatus, setActivity) {
     }
     // ==============================================================
 
+	// ==============================================================
+    // KONDISI OVERRIDE UNTUK MOVIE (TAGLINE & RELEASE DATE)
+    // ==============================================================
+    if (!finalEpisodeTitle && cachedShowTitle && !config.customBigText?.trim()) {
+        let movieLargeText = [];
+        // Gunakan tagline jika ada
+        if (cachedTmdbTagline) movieLargeText.push(`"${cachedTmdbTagline}"`);
+        // Gunakan tanggal jika diizinkan config
+        if (config.autoDate && cachedTmdbReleaseDate) movieLargeText.push(`(${cachedTmdbReleaseDate})`);
+        
+        // Gabungkan keduanya, contoh: "One. Last. Ride." (Jun 25, 2026)
+        if (movieLargeText.length > 0) {
+            activityPayload.largeImageText = movieLargeText.join(' ');
+        } else if (config.autoDate && fetchedReleaseDate) {
+            // Fallback jika API gagal tapi ada dari file .txt
+            activityPayload.largeImageText = `(${fetchedReleaseDate})`;
+        }
+    }
+    // ==============================================================
+	
     try {
         if (setActivity) await setActivity(activityPayload);
         const currentMediaState = mpcStatus.isPlaying ? 'PLAYING' : (mpcStatus.isPaused ? 'PAUSED' : 'STOPPED');

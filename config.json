@@ -1,13 +1,17 @@
 {
+    "personal_tmdb_token": "",
     "tmdb_id": "",
     "mal_id": "",
     "customText": "",
     "customBigText": "",
     "autoPoster": false,
+    "autoEpisode": false,
+    "autoDate": false,
     "cleanFilename": true,
     "romajiTitle": false,
     "randomPoster": false,
     "slideshowInterval": 0,
+    "dont": "okay",
     "customImage": [
         ""
     ],
@@ -21,9 +25,5 @@
         "-?PSA",
         "-?YTS\\.[A-Z]{2}",
         "-?Pahe\\.ph"
-    ],
-    "dont": "okay",
-    "autoEpisode": false,
-    "autoDate": false,
-    "personal_tmdb_token": ""
+    ]
 }

@@ -3,8 +3,7 @@ const path = require('path');
 const mpc = require('./mpc');
 const { buildPayload } = require('./payload');
 const logger = require('./logger');
-const { fetchTitles } = require('./titles');
-const fetchPoster = require('./poster');
+const { fetchMetadata, fetchTitles } = require('./metadata');
 const utils = require('./utils');
 
 const configPath = path.join(__dirname, 'config.json');
@@ -126,6 +125,7 @@ async function updatePresence(mpcStatus, setActivity) {
     const isNewMedia = (mpcStatus.rawFileName !== lastFetchedTitlesFileName);
     let fetchedEpisodeTitle = null;
     let fetchedReleaseDate = null;
+	let forcedSeason = null;
 
     // LIVE TXT WATCHER (Memantau file .txt di folder video secara real-time)
     const currentFolder = mpcStatus.filePath ? path.dirname(mpcStatus.filePath) : null;
@@ -149,10 +149,12 @@ async function updatePresence(mpcStatus, setActivity) {
         cachedFetchedTitles = titles;
         fetchedEpisodeTitle = titles.episodeTitle;
         fetchedReleaseDate = titles.releaseDate;
+        forcedSeason = titles.forcedSeason; // Ambil nilai
         lastFetchedTitlesFileName = mpcStatus.rawFileName;
     } else if (cachedFetchedTitles) {
         fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
         fetchedReleaseDate = cachedFetchedTitles.releaseDate;
+        forcedSeason = cachedFetchedTitles.forcedSeason; // Ambil nilai
     }
 
     const currentAutoTrigger = `${config.autoPoster}-${config.autoEpisode}-${config.autoDate}`;
@@ -166,7 +168,7 @@ async function updatePresence(mpcStatus, setActivity) {
             cachedShowTitle = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedTmdbUrl = null; cachedTmdbReleaseDate = null;
         }
 
-        const result = await fetchPoster(mpcStatus.tmdbID, mpcStatus.malID, mpcStatus.groupID, mpcStatus.filePath, utils.cleanName(mpcStatus.rawFileName, config));
+        const result = await fetchMetadata(mpcStatus.tmdbID, mpcStatus.malID, mpcStatus.groupID, mpcStatus.filePath, utils.cleanName(mpcStatus.rawFileName, config));
         if (!result.retry) {
             if (result.showTitle) showTitle = result.showTitle;
             
@@ -223,18 +225,28 @@ async function updatePresence(mpcStatus, setActivity) {
     let finalEpisodeTitle = null;
 
     if (fetchedEpisodeTitle) {
+        // Dari file lokal yang ADA ISINYA -> format sudah final, ikuti apa adanya
         finalEpisodeTitle = fetchedEpisodeTitle;
     } else if (config.autoEpisode && cachedApiEpisodeTitle && parsedSE.episode) {
-        if (parsedSE.season >= 2 || parsedSE.isExplicit) {
-            const sFormat = String(parsedSE.season).padStart(2, '0');
-            const eFormat = String(parsedSE.episode).padStart(2, '0');
+        // Dari API (auto) TAPI dengan override Season dari file titles_sX.txt kosong
+		// Dari TMDb API (auto) -> format episode BERGANTUNG pada nomor season:
+        // - Season 0 (di TMDb ini artinya Specials/OVA/ONA/dsb) -> "Special Episode X: Title"
+        // - Season 1                                            -> "Episode X: Title" (tanpa prefix season)
+        // - Season 2 ke atas                                    -> "S0XE0X: Title"
+        const actualSeason = forcedSeason !== null ? forcedSeason : parsedSE.season;
+        const eFormat = String(parsedSE.episode).padStart(2, '0');
+        
+        if (actualSeason === 0) {
+            finalEpisodeTitle = `Special Episode ${parsedSE.episode}: ${cachedApiEpisodeTitle}`;
+        } else if (actualSeason >= 2) {
+            const sFormat = String(actualSeason).padStart(2, '0');
             finalEpisodeTitle = `S${sFormat}E${eFormat}: ${cachedApiEpisodeTitle}`;
         } else {
             finalEpisodeTitle = `Episode ${parsedSE.episode}: ${cachedApiEpisodeTitle}`;
         }
     }
 
-    const finalReleaseDate = (config.autoDate ? cachedTmdbReleaseDate : null) || fetchedReleaseDate || mpcStatus.releaseDate;
+    const finalReleaseDate = (config.autoDate ? cachedTmdbReleaseDate : null) || fetchedReleaseDate;
 
     // Buat Payload Normal via payload.js bawaan Anda
     let activityPayload = buildPayload(mpcStatus, showTitle, finalEpisodeTitle, finalReleaseDate, largeImageKey, config, cachedTmdbUrl);
@@ -259,10 +271,11 @@ async function updatePresence(mpcStatus, setActivity) {
         const currentMediaState = mpcStatus.isPlaying ? 'PLAYING' : (mpcStatus.isPaused ? 'PAUSED' : 'STOPPED');
         
         if (isNewMedia) {
-            // Sumber ID: metadata file > txt folder video > config.json manual override
-            const idSource = (mpcStatus.debugIds.metadata.mal || mpcStatus.debugIds.metadata.tmdb) ? "Metadata File" :
-                             (mpcStatus.debugIds.txt.mal || mpcStatus.debugIds.txt.tmdb || mpcStatus.debugIds.txt.group) ? "Video Folder TXT" :
-                             (config.mal_id || config.tmdb_id) ? "config.json (Manual Override)" : "Not Found";
+            // Sumber ID: txt folder video > config.json manual override > auto via nama file
+            // (Metadata video/ffprobe TIDAK dipakai untuk ID sama sekali)
+            const idSource = (mpcStatus.debugIds.txt.mal || mpcStatus.debugIds.txt.tmdb || mpcStatus.debugIds.txt.group) ? "Video Folder TXT" :
+                             (config.mal_id || config.tmdb_id) ? "config.json (Manual Override)" :
+                             (cachedPosterSource && cachedPosterSource.includes('AutoPoster')) ? "Auto (Filename Search)" : "Not Found";
 
             // Sumber judul yang ditampilkan (details)
             const titleSource = (config.customText?.trim()) ? `Config customText -> "${config.customText}"` :
@@ -284,7 +297,6 @@ async function updatePresence(mpcStatus, setActivity) {
                                   (config.autoDate && cachedTmdbReleaseDate) ? `TMDb API Date -> "${cachedTmdbReleaseDate}"` :
                                   (!config.autoDate && !fetchedReleaseDate) ? `Not Found -> autoDate is OFF in config` :
                                   (fetchedReleaseDate) ? `titles.txt -> "${fetchedReleaseDate}"` :
-                                  (mpcStatus.releaseDate) ? `Video Metadata -> "${mpcStatus.releaseDate}"` :
                                   `Not Found -> Fallback to "MPC-HC"`;
 
             const customImageURL = hasCustomImage ? "used" : null;

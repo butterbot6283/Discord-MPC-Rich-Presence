@@ -27,18 +27,25 @@ I can't code and english isn't my native, this script created with AI I only do 
 
 ### Discord Rich Presence
 Displays real-time playback status on your Discord profile. Shows the video title, current state (Playing/Paused/Idle), timestamps, a poster image, and an optional clickable TMDb link on the activity.
-
-### Smart Metadata (via FFprobe)
-Reads embedded tags directly from your video file using `ffprobe` with a 3-second timeout to prevent hangs. Extracts the title, TMDb ID, MAL ID, and release date when they are present. Falls back to filename parsing if metadata is unavailable.
-
+ 
+### Video Title Detection (via FFprobe)
+Reads the embedded `title` tag directly from your video file using `ffprobe` with a 3-second timeout to prevent hangs. That's the only thing pulled from video metadata — **TMDb/MAL IDs and release dates are never read from the video file itself**, only from `tmdb.txt`/`mal.txt` (see [Folder Metadata](#folder-metadata)) or `config.json`. Falls back to the filename as the title if no `title` tag is present.
+ 
 ### AutoPoster Pipeline (TMDb + Jikan)
-Automatically finds the correct poster through a multi-step lookup chain:
-1. MAL ID → Jikan API
-2. TMDb ID from metadata or `tmdb.txt` → TMDb API
-3. TMDb ID from `config.json` → TMDb API
-4. Filename search → TMDb API (TV or Movie, with auto-fallback between types)
-
+Automatically finds the correct poster/show info through a lookup chain, in priority order:
+1. `mal.txt` / `tmdb.txt` / `group.txt` in the video's folder → Jikan or TMDb API
+2. `mal_id` / `tmdb_id` in `config.json` → Jikan or TMDb API
+3. Filename search (cascade, see below) → TMDb API
 Results are cached locally in `rpc_cache.json` inside the video folder (or the project folder if the video folder is not writable). The cache is permanent unless you change the `dont` filter or the group ID — switching `autoPoster`, `romajiTitle`, or other visual settings does **not** bust the cache.
+ 
+### Cascade Filename Search
+When no ID is available anywhere, the script searches TMDb by filename using a multi-stage "cascade" so a single bad guess (wrong year, leftover season marker) doesn't fail the whole lookup:
+1. Try the cleaned title **with** the year parsed from the filename.
+2. If that fails, retry the same title **without** the year — a year in the filename is only used to pick between multiple matches (e.g. a remake), never a hard requirement. So if the title is right but the year is off, you still get the correct result.
+3. If it still fails, retry both of the above on the opposite media type (TV ↔ Movie).
+4. If it *still* fails, strip season indicators (`S2`, `Season 2`, `Part 2`, `Cour 2`) from the title and repeat the cascade — handles files like `Fairy Tail S2 (2014)` where the show's TMDb entry only has the original season's air date.
+5. As a last resort, strip a trailing standalone number or roman numeral (`Sword Art Online II` → `Sword Art Online`) and repeat once more.
+Every retry is logged so you can see exactly which stage found (or failed to find) a match.
 
 ### Romaji Title
 When `romajiTitle` is enabled, the script prefers the Romaji transliteration fetched from TMDb's alternative titles (JP/Romaji or Transliteration type). Both the standard and Romaji titles are always saved to cache so toggling this setting takes effect instantly without a new API call.
@@ -53,6 +60,15 @@ When `randomPoster` is enabled, a random poster is selected from the full list o
 <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/39d6ca48-c7dd-47a8-bb78-8a60ef4adfca" /><img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/ad80f955-6da1-4f48-b72e-66e418530744" />
 
 
+### Season-Aware Episode Formatting
+When episode titles come from TMDb (`autoEpisode`), the display format adapts to the season number:
+- **Season 0** (TMDb's convention for Specials/OVA/ONA) → `Special Episode X: Title`
+- **Season 1** → `Episode X: Title` (no season prefix)
+- **Season 2 and up** → `S0XE0X: Title`
+If a `titles_sX.txt` file exists in the video folder, its season number takes priority over whatever is parsed from the filename. Episode titles sourced from `titles.txt` / `titles_sX.txt` themselves always keep their own format (`Episode XX: Title` or `S0XE0X: Title` based on the filename) regardless of this rule — this only affects titles auto-fetched from TMDb.
+ 
+### Movie Tagline & Release Date
+For movies (no episode detected), the large image tooltip automatically combines the TMDb tagline and release date, e.g. `"One. Last. Ride." (Jun 25, 2026)`. Falls back to just the release date if no tagline is available, and is skipped entirely if `customBigText` is set.
 
 ### Slideshow
 Set `slideshowInterval` (in seconds) to rotate through multiple custom images or TMDb posters on a timer. Supports both random cycling (if `randomPoster` is on) and sequential cycling. Set to `0` to disable.
@@ -181,7 +197,7 @@ The script includes a built-in shared API token so it works out of the box. For 
 ```
 
 ### Every Option Explained
-
+ 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `personal_tmdb_token` | string | `""` | Your personal TMDb Bearer token. Leave empty to use the built-in shared token. |
@@ -196,7 +212,7 @@ The script includes a built-in shared API token so it works out of the box. For 
 | `romajiTitle` | bool | `false` | Prefers the Romaji transliteration of the show title from TMDb when available. |
 | `randomPoster` | bool | `true` | Picks a random poster from the TMDb poster list instead of the first one. |
 | `slideshowInterval` | number | `0` | Seconds between poster/image rotations. `0` disables the slideshow. |
-| `dont` | string | `"nah"` | NSFW filter for TMDb search. `"nah"` includes adult results; `"okay"` excludes them. Changing this busts the cache. |
+| `dont` | string | `"okay"` | Just Don't. |
 | `customImage` | array | `[""]` | Array of image URLs to use instead of the auto-fetched poster. Supports slideshow rotation if multiple URLs are provided. |
 | `cleanRegex` | array | *(see above)* | Array of regex patterns applied to the filename when `cleanFilename` is `true`. |
 
@@ -291,86 +307,96 @@ episode_number|title|release_date
 When a season file (`titles_sX.txt`) is used, episode labels are formatted as `S02E01: Title`. When the generic `titles.txt` is used, labels are formatted as `Episode 01: Title`. If more than one titles file exists in the same folder the script skips all of them to avoid conflicts.
 
 ### ID Priority Order
-
+ 
 From highest to lowest:
-1. Embedded file metadata (`tmdb_ID` / `MAL_ID` tags read by FFprobe)
-2. Folder text files (`tmdb.txt`, `mal.txt`, `group.txt`)
-3. `config.json` (`tmdb_id`, `mal_id`)
-
+1. Folder text files (`tmdb.txt`, `mal.txt`, `group.txt`)
+2. `config.json` (`tmdb_id`, `mal_id`)
+3. Auto filename search (cascade, see [Cascade Filename Search](#cascade-filename-search))
+Video file metadata is **not** used for IDs at all — `ffprobe` only reads the `title` tag.
+ 
 ---
-
+ 
 ## AutoPoster Pipeline
-
-When a new file is detected, the poster lookup runs in this exact order and stops at the first successful result:
-
+ 
+When a new file is detected, the poster/ID lookup runs in this exact order and stops at the first successful result:
+ 
 ```
 New File Detected
       │
-      ├─► Metadata (FFprobe tags) ──► tmdb_ID / MAL_ID found?
-      │         No ▼
       ├─► Folder txt files ──────────► tmdb.txt / mal.txt / group.txt found?
       │         No ▼
       ├─► config.json ───────────────► tmdb_id / mal_id set?
       │         No ▼ (autoPoster: true required from here)
       ├─► MAL ID → Jikan API ────────► poster + showTitle
       ├─► TMDb ID → TMDb API ────────► poster + showTitle + episodes
-      └─► Filename Search → TMDb ────► TV search, then Movie fallback
-                 │
+      └─► Filename Search → TMDb ────► Cascade search:
+                 │                       1. Title + year
+                 │                       2. Title only (no year)
+                 │                       3. Repeat 1-2 on opposite type (TV ↔ Movie)
+                 │                       4. Strip season indicator, repeat
+                 │                       5. Strip trailing number, repeat
                  ▼
            Result cached in rpc_cache.json (folder-local or project root)
 ```
-
+ 
 The cache key is the TMDb/MAL ID if known, or the cleaned filename for autoPoster searches. The cache is invalidated only when the `dont` setting or `groupID` changes. All other config toggles are applied at read time from the cached data.
-
+ 
 ---
-
+ 
 ## Rich Presence Layout
-
+ 
 ### Playing State
-
+ 
 | Field | Source (priority order) |
 |-------|------------------------|
 | `name` | Show title from TMDb/Jikan (when `autoPoster` is on) |
 | `details` | Show title (type 2) or filename (type 0) |
-| `state` | Episode title from `titles.txt` → TMDb episode title → metadata title → filename |
+| `state` | Episode title from `titles.txt`/`titles_sX.txt` → TMDb episode title (season-aware format, see [Season-Aware Episode Formatting](#season-aware-episode-formatting)) → filename |
 | `largeImageKey` | `customImage` → TMDb poster → MPC-HC default logo |
-| `largeImageText` | `customBigText` → release date from TMDb/`titles.txt`/metadata → `"MPC-HC"` |
+| `largeImageText` | `customBigText` → for movies: TMDb tagline + release date → episode title (when paused, `autoPoster` off) → release date from TMDb/`titles.txt` → `"MPC-HC"` |
 | `smallImageKey` | Play icon |
 | `startTimestamp` | Current position offset from now |
 | `endTimestamp` | Calculated from duration |
 | `detailsUrl` | Clickable TMDb link (when `showTitle` matches `details`) |
-
+ 
 ### Paused State
-
+ 
 | Field | Source |
 |-------|--------|
 | `details` | Show title → episode title → filename |
 | `state` | `position / duration` (e.g. `12:34 / 24:00`) |
 | `largeImageText` | Episode title (override) → `customBigText` → release date → `"MPC-HC"` |
 | `smallImageKey` | Pause icon |
-
+ 
 ### Idle / Stopped State
-
+ 
 Shows `"Idling"` with the MPC-HC logo and `"Nothing is playing"`.
-
+ 
 ---
 
 ## FAQ
 
-**Does it work without a TMDb account?**
+**Does it work without a TMDb account?**\
 Yes. A shared built-in token is included. You only need your own token if you hit rate limits or want private access.
 
-**Does the cache reset when I change settings?**
+**Does it work with other media player?**\
+Currently not, but it works with all Media Player Classic series.\
+Just make sure port is same as [Enable MPC-HC Web Interface](https://github.com/butterbot6283/Discord-MPC-Rich-Presence/edit/main/README.md#enable-mpc-hc-web-interface)
+- [MPC-HC](https://github.com/clsid2/mpc-hc)
+- [MPC-BE](https://github.com/Aleksoid1978/MPC-BE)
+- [MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)
+
+**Does the cache reset when I change settings?**\
 Only API-affecting settings reset it (IDs, `dont`, `autoEpisode`, `autoPoster`, `autoDate`, `romajiTitle`, `cleanFilename`). Visual-only settings like `customText`, `customBigText`, `customImage`, and `slideshowInterval` update Discord instantly without clearing the cache.
 
-**What if there are multiple `titles_sX.txt` files in the folder?**
+**What if there are multiple `titles_sX.txt` files in the folder?**\
 The script detects the conflict and skips all of them. Keep only one titles file per folder.
 
-**Can I use this for anime?**
+**Can I use this for anime?**\
 Yes. Set `mal_id` in the folder's `mal.txt` or `config.json`. The script will fetch posters and titles from MyAnimeList via Jikan. For accurate episode ordering (e.g. Dragon Ball, One Piece), create a `group.txt` with the correct TMDb Episode Group ID.
 
-**What is `dont`?**
-It controls the `include_adult` flag on TMDb search queries. `"nah"` includes adult content in results; `"okay"` excludes it. Changing this value invalidates the cache.
+**What is `dont`?**\
+Don't ask
 
 ---
 

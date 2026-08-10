@@ -48,14 +48,18 @@ function statusLine(label, icon, message) {
     return `   - ${paddedLabel}: ${icon} ${message}`;
 }
 
-// Bangun teks "(year: 2014 — ...)" untuk baris Search Query.
-// yearMatched: true = tahun cocok dengan hasil (paling akurat), false = tahun TIDAK cocok
-// tapi tetap pakai hasil judul teratas (year cuma pengakurat, bukan filter wajib), null/undefined = tanpa info tahun.
-function buildYearStr(year, yearMatched) {
-    if (!year) return '';
-    if (yearMatched === true) return ` (year: ${year} ✓ matched)`;
-    if (yearMatched === false) return ` (year: ${year} — no exact match, using closest title)`;
-    return ` (year: ${year})`;
+// Bangun teks "(year: 2014)" untuk baris Search Query. Simpel saja karena info
+// match/tidaknya tahun sekarang sudah tercermin lewat retry notes (lihat isRetryNote di bawah).
+function buildYearStr(year) {
+    return year ? ` (year: ${year})` : '';
+}
+
+// metadata.js sekarang pakai "cascade search" (coba beberapa kombinasi tahun/tipe/judul
+// sebelum menyerah) dan menaruh catatan setiap percobaan itu ke debugInfo.apiErrors juga.
+// Fungsi ini membedakan mana yang catatan retry (bukan kegagalan) vs error API asli,
+// supaya retry yang berujung SUKSES tidak dilaporkan sebagai "request failed".
+function isRetryNote(msg) {
+    return msg.startsWith('Strict year match failed.') || msg.startsWith('No results for ');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +115,9 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     // Tentukan apakah setiap step berhasil atau gagal untuk badge ✅/⚠️/❌
     const txtOk    = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.mal || mpcStatus.debugIds?.txt?.group;
     const posterOk = cleanSource !== 'Not Found' && cleanSource !== 'Error' && debugData.cachedPosterSource;
-    const apiErrors = debugData.cachedPosterDebug?.apiErrors || [];
+    const allSearchNotes = debugData.cachedPosterDebug?.apiErrors || [];
+    const retryNotes = allSearchNotes.filter(isRetryNote);
+    const apiErrors = allSearchNotes.filter(msg => !isRetryNote(msg));
 
     // ── Header ────────────────────────────────────────────────────────────────
     console.log(`\n${'═'.repeat(56)}`);
@@ -197,9 +203,15 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
         console.log(statusLine('Method', '🌐', 'Fetched from API (online)'));
         console.log(statusLine('API Source', '✅', cleanSource));
 
+        // Kalau cascade search butuh beberapa percobaan sebelum ketemu (mis. coba tanpa tahun,
+        // coba tanpa indikator season, dll), tampilkan jejaknya biar kelihatan kenapa agak lama
+        if (retryNotes.length > 0) {
+            retryNotes.forEach(msg => console.log(statusLine('  ↳ Retry', '🔁', msg)));
+        }
+
         // Jika autoPoster mencari via nama file, tampilkan keyword yang dipakai
         if (debugData.cachedPosterDebug?.searchedTmdb) {
-            const yearStr = buildYearStr(debugData.cachedPosterDebug.year, debugData.cachedPosterDebug.yearMatched);
+            const yearStr = buildYearStr(debugData.cachedPosterDebug.year);
             console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
         }
 
@@ -213,20 +225,27 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
         // Fetch dijalankan tapi tidak menemukan apa-apa
         console.log(statusLine('Method', '🌐', 'Fetched from API (online)'));
 
-        // Bedakan antara "tidak ketemu (404/no results)" dan "error jaringan/timeout nyata"
+        // Bedakan antara "error jaringan/timeout nyata" dan "sudah dicoba beberapa cara tapi genuinely tidak ketemu"
         if (cleanSource === 'Error' || apiErrors.length > 0) {
             console.log(statusLine('API Result', '❌', 'Request failed — falling back to MPC-HC logo'));
-            // Cetak setiap error nyata yang tertangkap dari poster.js (mis. ECONNABORTED, timeout, 500)
+            // Cetak setiap error nyata yang tertangkap dari metadata.js (mis. ECONNABORTED, timeout, 500)
             apiErrors.forEach(msg => {
                 console.log(statusLine('  ↳ Error', '❌', msg));
             });
         } else {
             // autoPoster ON tapi genuinely tidak ada hasil: tampilkan keyword yang sudah dicoba
             if (debugData.cachedPosterDebug?.searchedTmdb) {
-                const yearStr = buildYearStr(debugData.cachedPosterDebug.year, debugData.cachedPosterDebug.yearMatched);
+                const yearStr = buildYearStr(debugData.cachedPosterDebug.year);
                 console.log(statusLine('Search Query', '🔍', `"${debugData.cachedPosterDebug.cleanTitle}"${yearStr}`));
             }
-            console.log(statusLine('API Result', '⚠️', 'No matching title found — falling back to MPC-HC logo'));
+
+            if (retryNotes.length > 0) {
+                // Sudah dicoba beberapa kombinasi (tanpa tahun, tanpa indikator season, dll) tapi tetap nihil
+                console.log(statusLine('API Result', '⚠️', `No matching title found after ${retryNotes.length + 1} attempt(s) — falling back to MPC-HC logo`));
+                retryNotes.forEach(msg => console.log(statusLine('  ↳ Retry', '🔁', msg)));
+            } else {
+                console.log(statusLine('API Result', '⚠️', 'No matching title found — falling back to MPC-HC logo'));
+            }
 
             // Saran perbaikan agar user tahu langkah selanjutnya
             console.log(`   ${'─'.repeat(50)}`);

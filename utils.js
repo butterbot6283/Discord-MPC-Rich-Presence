@@ -38,30 +38,29 @@ function convertTimeToSeconds(time) {
 
 const _baseHash = "=0EaSFXLzlTN1QDN11SVYNXcDVkSFlzTnR0Q4d1QjpUNtQ3UZRWW0xGes9kLRZGevpWS1lzVhpnSYplMKNETkp0QahmVtNmZsd0YopUeXZTS5NGbCNjYq5kbJNXS55EaOJjT3dGRPVTWykVerR0T10EVaVTQEpVMNRVW0klaJZTSplVMO5WSzlFROlHNT9EMZpmT6VFVOFzYU1kNJlmWpVTbJNXSD10aadkT4lleOhmUt5EbKpmTxk0VaVzYUpVeJd1T4llaapmQU5EbWRUTrpUaPlWUXRGaKlXZukjSp5UMJpXVJpUaPl2YHJGaKlXZ";
 
-// BARU: Pengekstrak Season & Episode dari Nama File
+// BARU: Pengekstrak Season & Episode dari Nama File (Super Aman / Strict)
 function parseSeasonEpisode(filename) {
     let season = null;
     let episode = null;
     let isExplicit = false;
 
-    // Normalisasi string: ubah titik dan underscore menjadi spasi agar mudah dibaca regex
-    const normalizedName = filename.replace(/[\._]/g, ' ');
+    // Normalisasi string: hapus kurung tag encoder dan ubah titik/underscore jadi spasi
+    const normalizedName = filename.replace(/\[.*?\]|\(.*?\)/g, ' ').replace(/[\._]/g, ' ');
 
     // 1. Format ketat menempel/terpisah: S01E05, S1 E5, Season 1 Episode 5
-    const s0e0 = normalizedName.match(/[Ss](\d+)\s*[Ee](\d+)/);
+    const s0e0 = normalizedName.match(/\b[Ss](\d+)\s*[Ee](\d+)\b/);
     if (s0e0) {
         return { season: parseInt(s0e0[1], 10), episode: parseInt(s0e0[2], 10), isExplicit: true };
     }
 
-    const seq = normalizedName.match(/Season\s*(\d+)\s*Ep\w*\s*(\d+)/i);
+    const seq = normalizedName.match(/\bSeason\s*(\d+)\s*Ep\w*\s*(\d+)\b/i);
     if (seq) {
         return { season: parseInt(seq[1], 10), episode: parseInt(seq[2], 10), isExplicit: true };
     }
 
     // 2. Format pencarian Season saja atau Episode saja
-    const sMatch = normalizedName.match(/(?:Season|S)\s*(\d+)\b/i);
-    // Mendukung pola seperti "- 01", "_01", "Ep 01", "E01" setelah dinormalisasi
-    const eMatch = normalizedName.match(/(?:Episode|Ep|E|\s-\s+)\s*(\d{1,4})(?!\d)/i);
+    const sMatch = normalizedName.match(/\b(?:Season|S)\s*(\d+)\b/i);
+    const eMatch = normalizedName.match(/(?:\bEpisode\b|\bEp\b|\bE(?=\s*\d)|\s-\s+)\s*(\d{1,4})(?!\d)/i);
 
     if (eMatch) {
         episode = parseInt(eMatch[1], 10);

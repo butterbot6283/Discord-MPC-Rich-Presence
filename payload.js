@@ -22,7 +22,7 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
 
     let largeImageText;
     if (mpcStatus.isPaused && !showTitle && fetchedEpisodeTitle) largeImageText = fetchedEpisodeTitle;
-    else largeImageText = config.customBigText?.trim() ? config.customBigText : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : (mpcStatus.releaseDate ? `(${mpcStatus.releaseDate})` : 'MPC-HC'));
+    else largeImageText = config.customBigText?.trim() ? config.customBigText : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : 'MPC-HC');
 
     const startTimestamp = Date.now() - (mpcStatus.position * 1000);
     const endTimestamp = mpcStatus.isPlaying ? startTimestamp + (mpcStatus.duration * 1000) : startTimestamp + (mpcStatus.position * 1000);

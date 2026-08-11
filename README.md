@@ -381,7 +381,7 @@ Yes. A shared built-in token is included. You only need your own token if you hi
 
 **Does it work with other media player?**\
 Currently not, but it works with all Media Player Classic series.\
-Just make sure port is same as [Enable MPC-HC Web Interface](https://github.com/butterbot6283/Discord-MPC-Rich-Presence/edit/main/README.md#enable-mpc-hc-web-interface)
+Just make sure port is same as [Enable MPC-HC Web Interface](https://github.com/butterbot6283/Discord-MPC-Rich-Presence/main/README.md#enable-mpc-hc-web-interface)
 - [MPC-HC](https://github.com/clsid2/mpc-hc)
 - [MPC-BE](https://github.com/Aleksoid1978/MPC-BE)
 - [MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)

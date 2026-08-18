@@ -2,7 +2,7 @@ I can't code and english isn't my native, this script created with AI I only do 
 
 # MPC Discord Presence
 
-> A Node.js script to display your **Media Player Classic (MPC-HC)** playback as a Discord Rich Presence — with automatic poster fetching, episode titles, TMDb/MAL integration, Romaji support, slideshow, and live config reloading.
+> A Node.js script to display your **Media Player Classic (MPC-HC)** playback as a Discord Rich Presence — with automatic poster fetching, episode titles, TMDb integration, Romaji support, slideshow, and live config reloading.
 
 <div align="left">
 
@@ -26,17 +26,19 @@ I can't code and english isn't my native, this script created with AI I only do 
 ## Features
 
 ### Discord Rich Presence
-Displays real-time playback status on your Discord profile. Shows the video title, current state (Playing/Paused/Idle), timestamps, a poster image, and an optional clickable TMDb link on the activity.
+Displays real-time playback status on your Discord profile. Shows the video title, current state (Playing/Paused/Idle), timestamps, a poster image, and an optional clickable TMDb link on the activity. This now updates continuously on every tick — including while **paused** — so slideshow rotation, config changes, and folder `.txt` edits all take effect immediately without needing to press play first.
  
 ### Video Title Detection (via FFprobe)
-Reads the embedded `title` tag directly from your video file using `ffprobe` with a 3-second timeout to prevent hangs. That's the only thing pulled from video metadata — **TMDb/MAL IDs and release dates are never read from the video file itself**, only from `tmdb.txt`/`mal.txt` (see [Folder Metadata](#folder-metadata)) or `config.json`. Falls back to the filename as the title if no `title` tag is present.
+Reads the embedded `title` tag directly from your video file using `ffprobe` with a 3-second timeout to prevent hangs. That's the only thing pulled from video metadata — **TMDb IDs and release dates are never read from the video file itself**, only from `tmdb.txt` (see [Folder Metadata](#folder-metadata)) or `config.json`. Falls back to the filename as the title if no `title` tag is present.
  
-### AutoPoster Pipeline (TMDb + Jikan)
+### AutoPoster Pipeline (TMDb only)
 Automatically finds the correct poster/show info through a lookup chain, in priority order:
-1. `mal.txt` / `tmdb.txt` / `group.txt` in the video's folder → Jikan or TMDb API
-2. `mal_id` / `tmdb_id` in `config.json` → Jikan or TMDb API
+1. `tmdb.txt` / `group.txt` in the video's folder → TMDb API
+2. `tmdb_id` in `config.json` → TMDb API
 3. Filename search (cascade, see below) → TMDb API
 Results are cached locally in `rpc_cache.json` inside the video folder (or the project folder if the video folder is not writable). The cache is permanent unless you change the `dont` filter or the group ID — switching `autoPoster`, `romajiTitle`, or other visual settings does **not** bust the cache.
+
+> **Note:** This script previously experimented with a Jikan/MyAnimeList integration for anime metadata. It has been **fully removed** — Jikan turned out to be too unreliable in practice (frequent `504 "failed to connect to MyAnimeList"` errors, even on simple direct-ID lookups). TMDb is now the single, unified metadata source for everything, including anime. If your anime isn't on TMDb, use the filename search or a `tmdb.txt` override — TMDb covers the vast majority of anime titles as either a TV show or movie entry.
  
 ### Cascade Filename Search
 When no ID is available anywhere, the script searches TMDb by filename using a multi-stage "cascade" so a single bad guess (wrong year, leftover season marker) doesn't fail the whole lookup:
@@ -71,13 +73,13 @@ If a `titles_sX.txt` file exists in the video folder, its season number takes pr
 For movies (no episode detected), the large image tooltip automatically combines the TMDb tagline and release date, e.g. `"One. Last. Ride." (Jun 25, 2026)`. Falls back to just the release date if no tagline is available, and is skipped entirely if `customBigText` is set.
 
 ### Slideshow
-Set `slideshowInterval` (in seconds) to rotate through multiple custom images or TMDb posters on a timer. Supports both random cycling (if `randomPoster` is on) and sequential cycling. Set to `0` to disable.
+Set `slideshowInterval` (in seconds) to rotate through multiple custom images or TMDb posters on a timer. Supports both random cycling (if `randomPoster` is on) and sequential cycling. Set to `0` to disable. Keeps rotating even while the video is paused.
 
 ### Live Config Reload
-`presence.js` watches `config.json` with `fs.watch`. Any change saved by `menu.js` is picked up automatically within 500 ms. Changes that affect API results (autoPoster, autoEpisode, autoDate, romajiTitle, dont, IDs, cleanFilename) reset the cache and re-fetch. Changes that only affect display (customText, customBigText, customImage, slideshowInterval, randomPoster) update Discord immediately without clearing the cache.
+`presence.js` watches `config.json` with `fs.watch`. Any change saved by `menu.js` is picked up automatically within 500 ms — whether the video is playing or paused. Changes that affect API results (autoPoster, autoEpisode, autoDate, romajiTitle, dont, tmdb_id, cleanFilename) reset the cache and re-fetch. Changes that only affect display (customText, customBigText, customImage, slideshowInterval, randomPoster) update Discord immediately without clearing the cache.
 
 ### Live TXT Watcher
-The script also watches the currently playing video's folder for changes to `tmdb.txt`, `mal.txt`, `titles.txt`, and `group.txt`. Editing or adding any of those files while the script is running triggers a full cache reset and re-fetch automatically.
+The script also watches the currently playing video's folder for changes to `tmdb.txt`, `titles.txt`, and `group.txt`. Editing or adding any of those files while the script is running triggers a full cache reset and re-fetch automatically — including while the video is paused.
 
 ### Auto Reconnect
 `index.js` handles Discord connection lifecycle automatically. On disconnect it destroys the old client and creates a brand-new one every 5 seconds until Discord is available again. Pending intervals and memory are cleaned up on every reconnect cycle to prevent leaks.
@@ -106,7 +108,7 @@ An interactive terminal menu built with `readline`. Lets you start/stop the PM2 
 - **Discord** running on your system
 - **npm packages** (installed via `npm install`):
   - `@xhayper/discord-rpc` — Discord Rich Presence client
-  - `axios` — HTTP requests to TMDb and Jikan APIs
+  - `axios` — HTTP requests to TMDb
   - `@ctrl/video-filename-parser` — Episode number parsing from filenames
   - `pm2` — Background process management
 
@@ -170,7 +172,6 @@ The script includes a built-in shared API token so it works out of the box. For 
 {
     "personal_tmdb_token": "",
     "tmdb_id": "",
-    "mal_id": "",
     "customText": "",
     "customBigText": "",
     "autoPoster": true,
@@ -202,10 +203,9 @@ The script includes a built-in shared API token so it works out of the box. For 
 |-----|------|---------|-------------|
 | `personal_tmdb_token` | string | `""` | Your personal TMDb Bearer token. Leave empty to use the built-in shared token. |
 | `tmdb_id` | string | `""` | Global TMDb ID override. Applied to every video when set. Overridden by `tmdb.txt` or file metadata. |
-| `mal_id` | string | `""` | Global MyAnimeList ID override. Same priority as `tmdb_id`. |
 | `customText` | string | `""` | Replaces the video title in the `details` field. Overrides everything when set. |
 | `customBigText` | string | `""` | Replaces the large image tooltip text. Overrides release date display when set. |
-| `autoPoster` | bool | `true` | Enables automatic poster fetching from TMDb / Jikan. Also controls whether `showTitle` appears in the presence. |
+| `autoPoster` | bool | `true` | Enables automatic poster fetching from TMDb. Also controls whether `showTitle` appears in the presence. |
 | `autoEpisode` | bool | `true` | Enables fetching episode titles from TMDb. If disabled, only `titles.txt` files are used. |
 | `autoDate` | bool | `true` | Enables showing the release date fetched from TMDb in the large image tooltip. |
 | `cleanFilename` | bool | `true` | Strips bracketed tags and applies `cleanRegex` patterns before displaying the filename. |
@@ -253,7 +253,7 @@ The script includes a built-in shared API token so it works out of the box. For 
 
 ## Folder Metadata
 
-For per-show customization, place plain text files directly in the **same folder as your video files**. The script watches this folder in real-time and reloads automatically when any of these files change.
+For per-show customization, place plain text files directly in the **same folder as your video files**. The script watches this folder in real-time and reloads automatically when any of these files change — even while paused.
 
 ### `tmdb.txt`
 
@@ -261,14 +261,6 @@ Contains a single TMDb ID (numeric, e.g. `1396`). Takes priority over `config.js
 
 ```
 1396
-```
-
-### `mal.txt`
-
-Contains a single MyAnimeList ID (numeric, e.g. `21`).
-
-```
-21
 ```
 
 ### `group.txt`
@@ -309,8 +301,8 @@ When a season file (`titles_sX.txt`) is used, episode labels are formatted as `S
 ### ID Priority Order
  
 From highest to lowest:
-1. Folder text files (`tmdb.txt`, `mal.txt`, `group.txt`)
-2. `config.json` (`tmdb_id`, `mal_id`)
+1. Folder text files (`tmdb.txt`, `group.txt`)
+2. `config.json` (`tmdb_id`)
 3. Auto filename search (cascade, see [Cascade Filename Search](#cascade-filename-search))
 Video file metadata is **not** used for IDs at all — `ffprobe` only reads the `title` tag.
  
@@ -323,12 +315,10 @@ When a new file is detected, the poster/ID lookup runs in this exact order and s
 ```
 New File Detected
       │
-      ├─► Folder txt files ──────────► tmdb.txt / mal.txt / group.txt found?
+      ├─► Folder txt files ──────────► tmdb.txt / group.txt found?
       │         No ▼
-      ├─► config.json ───────────────► tmdb_id / mal_id set?
+      ├─► config.json ───────────────► tmdb_id set?
       │         No ▼ (autoPoster: true required from here)
-      ├─► MAL ID → Jikan API ────────► poster + showTitle
-      ├─► TMDb ID → TMDb API ────────► poster + showTitle + episodes
       └─► Filename Search → TMDb ────► Cascade search:
                  │                       1. Title + year
                  │                       2. Title only (no year)
@@ -339,7 +329,7 @@ New File Detected
            Result cached in rpc_cache.json (folder-local or project root)
 ```
  
-The cache key is the TMDb/MAL ID if known, or the cleaned filename for autoPoster searches. The cache is invalidated only when the `dont` setting or `groupID` changes. All other config toggles are applied at read time from the cached data.
+The cache key is the TMDb ID if known, or the cleaned filename for autoPoster searches. The cache is invalidated only when the `dont` setting or `groupID` changes. All other config toggles are applied at read time from the cached data.
  
 ---
  
@@ -349,7 +339,7 @@ The cache key is the TMDb/MAL ID if known, or the cleaned filename for autoPoste
  
 | Field | Source (priority order) |
 |-------|------------------------|
-| `name` | Show title from TMDb/Jikan (when `autoPoster` is on) |
+| `name` | Show title from TMDb (when `autoPoster` is on) |
 | `details` | Show title (type 2) or filename (type 0) |
 | `state` | Episode title from `titles.txt`/`titles_sX.txt` → TMDb episode title (season-aware format, see [Season-Aware Episode Formatting](#season-aware-episode-formatting)) → filename |
 | `largeImageKey` | `customImage` → TMDb poster → MPC-HC default logo |
@@ -367,6 +357,8 @@ The cache key is the TMDb/MAL ID if known, or the cleaned filename for autoPoste
 | `state` | `position / duration` (e.g. `12:34 / 24:00`) |
 | `largeImageText` | Episode title (override) → `customBigText` → release date → `"MPC-HC"` |
 | `smallImageKey` | Pause icon |
+
+Presence updates every ~5 seconds even while paused, so slideshow rotation, config edits, and folder `.txt` edits are reflected without needing to resume playback.
  
 ### Idle / Stopped State
  
@@ -380,23 +372,33 @@ Shows `"Idling"` with the MPC-HC logo and `"Nothing is playing"`.
 Yes. A shared built-in token is included. You only need your own token if you hit rate limits or want private access.
 
 **Does it work with other media player?**\
-Currently not, but it works with all Media Player Classic series.\
+No, but it works with all Media Player Classic series.\
 Just make sure port is same as [Enable MPC-HC Web Interface](https://github.com/butterbot6283/Discord-MPC-Rich-Presence/#enable-mpc-hc-web-interface)
 - [MPC-HC](https://github.com/clsid2/mpc-hc)
 - [MPC-BE](https://github.com/Aleksoid1978/MPC-BE)
 - [MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)
 
 **Does the cache reset when I change settings?**\
-Only API-affecting settings reset it (IDs, `dont`, `autoEpisode`, `autoPoster`, `autoDate`, `romajiTitle`, `cleanFilename`). Visual-only settings like `customText`, `customBigText`, `customImage`, and `slideshowInterval` update Discord instantly without clearing the cache.
+Only API-affecting settings reset it (`tmdb_id`, `dont`, `autoEpisode`, `autoPoster`, `autoDate`, `romajiTitle`, `cleanFilename`). Visual-only settings like `customText`, `customBigText`, `customImage`, and `slideshowInterval` update Discord instantly without clearing the cache.
 
 **What if there are multiple `titles_sX.txt` files in the folder?**\
 The script detects the conflict and skips all of them. Keep only one titles file per folder.
 
 **Can I use this for anime?**\
-Yes. Set `mal_id` in the folder's `mal.txt` or `config.json`. The script will fetch posters and titles from MyAnimeList via Jikan. For accurate episode ordering (e.g. Dragon Ball, One Piece), create a `group.txt` with the correct TMDb Episode Group ID.
+Yes — through TMDb. Most anime is listed on TMDb as either a TV show or a movie, so the normal `tmdb.txt` / filename-search / `autoEpisode` flow works the same as for any other show. For accurate episode ordering (e.g. Dragon Ball, One Piece), create a `group.txt` with the correct TMDb Episode Group ID. There is no separate MyAnimeList/Jikan integration — it was tried and removed for reliability reasons (see [Removed: MyAnimeList / Jikan Integration](#removed-myanimelist--jikan-integration)).
 
 **What is `dont`?**\
 Don't ask
+
+---
+
+## Removed: MyAnimeList / Jikan Integration
+
+An earlier version of this script fetched anime metadata from MyAnimeList via the [Jikan API](https://jikan.moe/) (unofficial MAL API) when a `mal.txt` file or `mal_id` config value was present. This has been **completely removed**.
+
+**Why it was removed:** Jikan proved too unreliable for a background presence tool that needs to fetch metadata continuously. Even simple direct-ID lookups (`GET /v4/anime/{id}`) frequently returned `504 "Jikan failed to connect to MyAnimeList. MyAnimeList may be down/unavailable or refuses to connect"`, and search endpoints failed even more often. A background retry system was attempted first, but the failures were persistent enough (well beyond what a reasonable retry/backoff schedule should tolerate) that it wasn't worth the added complexity.
+
+**What changed for existing users:** `mal.txt` and `mal_id` in `config.json` are no longer read at all — you can safely delete them, they're simply ignored. TMDb is now the single source of truth for all metadata, including anime. Update any `mal.txt` files to `tmdb.txt` with the equivalent TMDb ID instead.
 
 ---
 
@@ -409,7 +411,7 @@ Don't ask
 
 **Wrong poster or show title:**
 - Check the console log under `[1. RAW INPUTS & DETEKSI ID]` to see which ID was used.
-- Create a `tmdb.txt` or `mal.txt` in the video folder with the correct ID.
+- Create a `tmdb.txt` in the video folder with the correct ID.
 - Delete `rpc_cache.json` from the video folder to force a fresh API fetch.
 
 **MPC-HC not detected:**
@@ -435,7 +437,6 @@ Or use the menu: **Main Menu → View Live Log (PM2)**.
 
 ## Roadmap
 
-- [ ] MAL episode title fetching via Jikan seasons endpoint
 - [ ] Multi-monitor / multi-instance MPC-HC support
 - [ ] Configurable Discord RPC activity type (Watching / Playing / Listening)
 - [ ] Web UI for config editing instead of CLI menu
@@ -452,11 +453,9 @@ Libraries used:
 - [@ctrl/video-filename-parser](https://github.com/ctrl/video-filename-parser)
 - [pm2](https://pm2.keymetrics.io/)
 - [TMDb API](https://developer.themoviedb.org/)
-- [Jikan API](https://jikan.moe/) (unofficial MyAnimeList API)
 
 ---
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-

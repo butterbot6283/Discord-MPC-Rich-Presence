@@ -113,7 +113,8 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     const cleanSource = sourceInfo.replace('[CACHE] ', '');
 
     // Tentukan apakah setiap step berhasil atau gagal untuk badge ✅/⚠️/❌
-    const txtOk    = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.mal || mpcStatus.debugIds?.txt?.group;
+    // DIPERBAIKI: referensi debugIds.txt.mal dihapus (Jikan/MAL sudah tidak dipakai)
+    const txtOk    = mpcStatus.debugIds?.txt?.tmdb || mpcStatus.debugIds?.txt?.group;
     const posterOk = cleanSource !== 'Not Found' && cleanSource !== 'Error' && debugData.cachedPosterSource;
     const allSearchNotes = debugData.cachedPosterDebug?.apiErrors || [];
     const retryNotes = allSearchNotes.filter(isRetryNote);
@@ -127,15 +128,16 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
     // ── Blok Config Override ──────────────────────────────────────────────────
     // Tampilkan hanya jika ada override aktif dari config.json
+    // DIPERBAIKI: config.mal_id dihapus dari kondisi & baris Manual ID
     const hasOverride = config.customText || config.customBigText || debugData.customImageURL
-                        || config.tmdb_id || config.mal_id;
+    || config.tmdb_id;
     if (hasOverride) {
         console.log(`\n⚙️  [CONFIG OVERRIDES ACTIVE]`);
         if (config.customText)       console.log(`   - customText    : "${config.customText}"`);
         if (config.customBigText)    console.log(`   - customBigText : "${config.customBigText}"`);
         if (debugData.customImageURL)console.log(`   - customImage   : Custom image URL in use`);
-        if (config.tmdb_id || config.mal_id)
-            console.log(`   - Manual ID     : TMDb=${config.tmdb_id || '—'}, MAL=${config.mal_id || '—'}`);
+        if (config.tmdb_id)
+            console.log(`   - Manual ID     : TMDb=${config.tmdb_id}`);
     }
 
     // ── Blok 1: Input Mentah & Resolusi ID ───────────────────────────────────
@@ -146,7 +148,7 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
 
     // ── Sub-blok 1a: FFprobe ──────────────────────────────────────────────────
     // FFprobe di sini HANYA membaca title tag dari file video.
-    // ID (TMDb/MAL) dan tanggal rilis TIDAK diambil dari metadata video.
+    // ID (TMDb) dan tanggal rilis TIDAK diambil dari metadata video.
     const ffprobeStatus = mpcStatus.ffprobeStatus || { failed: false };
     if (ffprobeStatus.failed && ffprobeStatus.errorType === 'timeout') {
         // FFprobe tidak menjawab dalam 3 detik (disk lambat / file di jaringan)
@@ -166,23 +168,23 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     }
 
     // ── Sub-blok 1b: TXT Files ────────────────────────────────────────────────
-    // Cetak hasil baca tmdb.txt / mal.txt / group.txt dari folder video (prioritas ID pertama)
+    // Cetak hasil baca tmdb.txt / group.txt dari folder video (prioritas ID pertama)
+    // DIPERBAIKI: baris MAL dihapus dari txtFound
     if (txtOk) {
         const txtFound = [];
         if (mpcStatus.debugIds?.txt?.tmdb)  txtFound.push(`TMDb: ${mpcStatus.debugIds.txt.tmdb}`);
-        if (mpcStatus.debugIds?.txt?.mal)   txtFound.push(`MAL: ${mpcStatus.debugIds.txt.mal}`);
         if (mpcStatus.debugIds?.txt?.group) txtFound.push(`Group: ${mpcStatus.debugIds.txt.group}`);
         console.log(statusLine('Folder TXT', '✅', txtFound.join(' · ')));
     } else if (mpcStatus.filePath) {
         // File ada tapi tidak ada txt — ini normal, bukan error keras
-        console.log(statusLine('Folder TXT', '—', 'No tmdb.txt / mal.txt / group.txt in video folder'));
+        console.log(statusLine('Folder TXT', '—', 'No tmdb.txt / group.txt in video folder'));
     }
 
     // ── Sub-blok 1c: Ringkasan ID Akhir ──────────────────────────────────────
+    // DIPERBAIKI: finalMal dihapus dari ringkasan ID
     const finalTmdb  = mpcStatus.tmdbID  || '—';
-    const finalMal   = mpcStatus.malID   || '—';
     const finalGroup = mpcStatus.groupID || '—';
-    console.log(`   - Final IDs     : TMDb=${finalTmdb} | MAL=${finalMal} | Group=${finalGroup}`);
+    console.log(`   - Final IDs     : TMDb=${finalTmdb} | Group=${finalGroup}`);
     console.log(`   - ID Source     : ${debugData.idSource}`);
 
     // ── Blok 2: Fetch & Cache ─────────────────────────────────────────────────
@@ -285,8 +287,9 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
         console.log(`   💡 Tip: Make sure your filename has a recognizable episode number,`);
         console.log(`      e.g. "Show Name - 01.mkv" or "S01E01 Title.mkv"`);
         console.log(`   ${'─'.repeat(50)}`);
-    } else if (mpcStatus.tmdbID || mpcStatus.malID || config.tmdb_id || config.mal_id) {
+    } else if (mpcStatus.tmdbID || config.tmdb_id) {
         // Ada ID tapi TMDb tidak mengembalikan judul episode
+        // DIPERBAIKI: mpcStatus.malID / config.mal_id dihapus dari kondisi ini
         const parsedEp = debugData.cachedFetchedTitles?.debugInfo?.parsedEpisode;
         if (!parsedEp) {
             // Tidak ada nomor episode yang terbaca dari nama file

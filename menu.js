@@ -14,8 +14,9 @@ const question = (query) => new Promise((resolve) => rl.question(query, resolve)
 
 let config = {};
 
+// DIPERBAIKI: mal_id dihapus dari defaultConfig (Jikan/MAL sudah tidak dipakai)
 const defaultConfig = {
-    personal_tmdb_token: "", tmdb_id: "", mal_id: "", customText: "", customBigText: "",
+    personal_tmdb_token: "", tmdb_id: "", customText: "", customBigText: "",
     autoPoster: true, autoEpisode: true, autoDate: true,
     cleanFilename: true, romajiTitle: false, randomPoster: false,
     dont: "okay", slideshowInterval: 0, customImage: [""],
@@ -36,6 +37,7 @@ function loadConfig() {
             if (config.autoEpisode === undefined) config.autoEpisode = true;
             if (config.autoDate === undefined) config.autoDate = true;
             delete config.imdb_id;
+            delete config.mal_id; // DIPERBAIKI: bersihkan mal_id lama kalau masih ada di config.json existing
         } else {
             config = { ...defaultConfig };
         }
@@ -123,7 +125,6 @@ function printFullConfig() {
     console.log("==================================================");
     console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Set (Hidden)" : "Empty (Using Default)"}'`);
     console.log(` [TEXT] tmdb_id           : '${config.tmdb_id || ""}'`);
-    console.log(` [TEXT] mal_id            : '${config.mal_id || ""}'`);
     console.log(` [TEXT] customText        : '${config.customText || ""}'`);
     console.log(` [TEXT] customBigText     : '${config.customBigText || ""}'`);
     console.log(` [SW]   Auto TMDb         : Poster(${config.autoPoster ? 'On' : 'Off'}) | Ep(${config.autoEpisode ? 'On' : 'Off'}) | Date(${config.autoDate ? 'On' : 'Off'})`);
@@ -143,7 +144,6 @@ function printTextConfig() {
     console.log("==================================================");
     console.log(` [KEY]  Personal TMDb     : '${config.personal_tmdb_token ? "Set (Hidden)" : "Empty (Using Default)"}'`);
     console.log(` [TEXT] tmdb_id           : '${config.tmdb_id || ""}'`);
-    console.log(` [TEXT] mal_id            : '${config.mal_id || ""}'`);
     console.log(` [TEXT] customText        : '${config.customText || ""}'`);
     console.log(` [TEXT] customBigText     : '${config.customBigText || ""}'`);
     console.log("==================================================\n");
@@ -218,23 +218,22 @@ function handleMainMenu(choice, isRunning) {
     }
 }
 
+// DIPERBAIKI: opsi mal_id dihapus, menu Text & IDs sekarang tinggal 4 item (personal_tmdb_token, tmdb_id, customText, customBigText)
 function textMenu() {
     clearScreen();
     printTextConfig();
     console.log("--- 📝 TEXT & IDs MENU ---");
     console.log("1. Edit personal_tmdb_token (Personal API Key)");
     console.log("2. Edit tmdb_id");
-    console.log("3. Edit mal_id");
-    console.log("4. Edit customText");
-    console.log("5. Edit customBigText");
+    console.log("3. Edit customText");
+    console.log("4. Edit customBigText");
     console.log("0. 🔙 Back");
     rl.question("\nChoose an option: ", (choice) => {
         switch (choice.trim()) {
             case '1': editString('personal_tmdb_token', "Enter Personal TMDb Token (JWT/Bearer)", textMenu); break;
             case '2': editString('tmdb_id', "Enter tmdb_id", textMenu); break;
-            case '3': editString('mal_id', "Enter mal_id", textMenu); break;
-            case '4': editString('customText', "Enter customText", textMenu); break;
-            case '5': editString('customBigText', "Enter customBigText", textMenu); break;
+            case '3': editString('customText', "Enter customText", textMenu); break;
+            case '4': editString('customBigText', "Enter customBigText", textMenu); break;
             case '0': mainMenu(); break;
             default: textMenu(); break;
         }
@@ -388,8 +387,8 @@ async function viewLiveLogs() {
 
         const filteredLines = text.split('\n').filter(line => {
             return !line.includes('[TAILING]') &&
-                   !line.includes('last 35 lines:') &&
-                   !line.includes('🧹 Console auto-cleared');
+            !line.includes('last 35 lines:') &&
+            !line.includes('🧹 Console auto-cleared');
         });
 
         const finalOutput = filteredLines.join('\n').trim();

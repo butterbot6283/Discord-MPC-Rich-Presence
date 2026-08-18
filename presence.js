@@ -310,20 +310,11 @@ async function updatePresence(mpcStatus, setActivity) {
     // ==============================================================
     // KONDISI OVERRIDE UNTUK MOVIE (TAGLINE & RELEASE DATE)
     // ==============================================================
-    if (!finalEpisodeTitle && cachedShowTitle && !config.customBigText?.trim()) {
-        let movieLargeText = [];
-        // Gunakan tagline jika ada
-        if (cachedTmdbTagline) movieLargeText.push(`"${cachedTmdbTagline}"`);
-        // Gunakan tanggal jika diizinkan config
-        if (config.autoDate && cachedTmdbReleaseDate) movieLargeText.push(`(${cachedTmdbReleaseDate})`);
+    if (cachedShowTitle && !config.customBigText?.trim() && cachedTmdbTagline) {
+        activityPayload.largeImageText = `"${cachedTmdbTagline}"`;
 
-        // Gabungkan keduanya, contoh: "One. Last. Ride." (Jun 25, 2026)
-        if (movieLargeText.length > 0) {
-            activityPayload.largeImageText = movieLargeText.join(' ');
-        } else if (config.autoDate && fetchedReleaseDate) {
-            // Fallback jika API gagal tapi ada dari file .txt
-            activityPayload.largeImageText = `(${fetchedReleaseDate})`;
-        }
+        const taglineDate = (config.autoDate && cachedTmdbReleaseDate) || fetchedReleaseDate;
+        if (taglineDate) activityPayload.smallImageText = `(${taglineDate})`;
     }
     // ==============================================================
 

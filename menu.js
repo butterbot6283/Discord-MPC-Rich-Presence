@@ -187,7 +187,7 @@ function mainMenu() {
     console.log("");
 
     console.log("--- 🏠 MAIN MENU ---");
-    console.log(`1. ${isRunning ? '⏹️ Stop index.js (PM2)' : '▶️ Start index.js (PM2)'}`);
+    console.log(`1. ${isRunning ? '⏹️ Stop index.js (PM2)' : '🎬 Start index.js (PM2)'}`);
     console.log("2. 📜 View Live Log (PM2)");
     console.log("3. 📝 Edit Text & IDs");
     console.log("4. 🕹️ Edit Switches (True/False)");

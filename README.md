@@ -19,6 +19,91 @@ I can't code and English isn't my native language. This script was created with 
 
 ---
 
+# Requirements
+
+- **Node.js** v18 or higher
+- **MPC-HC** with the Web Interface enabled (default port `13579`)
+- **FFprobe** (part of FFmpeg) installed and available in `PATH`
+- **Discord** running on the system
+- Internet access for TMDb / AniList lookups
+- npm packages installed with `npm install`
+
+Main packages:
+
+- `@xhayper/discord-rpc`
+- `axios`
+- `@ctrl/video-filename-parser`
+- `pm2`
+
+AniList is accessed through its GraphQL API using the existing HTTP client, so no separate AniList npm package is required.
+
+---
+
+# Installation
+
+## Windows
+
+```bat
+git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
+cd Discord-MPC-Rich-Presence
+npm install
+```
+
+Then run `menu.bat`.
+
+## Linux
+
+```bash
+git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
+cd Discord-MPC-Rich-Presence
+npm install
+node --no-warnings menu.js
+```
+
+---
+
+## Enable MPC-HC Web Interface
+
+Open:
+
+**MPC-HC → View → Options → Player → Web Interface**
+
+Enable the Web Interface and allow localhost access.
+
+The default port is:
+
+```text
+13579
+```
+
+---
+
+## Install FFprobe
+
+Install FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) and make sure `ffprobe` is available in `PATH`.
+
+Verify:
+
+```bash
+ffprobe -version
+```
+
+---
+
+# TMDb API Setup
+
+The script includes a built-in shared TMDb token.
+
+For higher rate limits or your own API access, create a [TMDb API token](https://www.themoviedb.org/settings/api) and place it in:
+
+```text
+personal_tmdb_token
+```
+
+You can configure it through the menu or directly in `config.json`.
+
+---
+
 ## Features
 
 ### Discord Rich Presence
@@ -277,88 +362,84 @@ It can be used to:
 
 ---
 
-# Requirements
+# Folder Metadata
 
-- **Node.js** v18 or higher
-- **MPC-HC** with the Web Interface enabled (default port `13579`)
-- **FFprobe** (part of FFmpeg) installed and available in `PATH`
-- **Discord** running on the system
-- Internet access for TMDb / AniList lookups
-- npm packages installed with `npm install`
+Place these files in the same folder as the video:
 
-Main packages:
+### `tmdb.txt`
 
-- `@xhayper/discord-rpc`
-- `axios`
-- `@ctrl/video-filename-parser`
-- `pm2`
-
-AniList is accessed through its GraphQL API using the existing HTTP client, so no separate AniList npm package is required.
-
----
-
-# Installation
-
-## Windows
-
-```bat
-git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
-cd Discord-MPC-Rich-Presence
-npm install
-```
-
-Then run `menu.bat`.
-
-## Linux
-
-```bash
-git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
-cd Discord-MPC-Rich-Presence
-npm install
-node --no-warnings menu.js
-```
-
----
-
-## Enable MPC-HC Web Interface
-
-Open:
-
-**MPC-HC → View → Options → Player → Web Interface**
-
-Enable the Web Interface and allow localhost access.
-
-The default port is:
+Contains a single TMDb ID.
 
 ```text
-13579
+65844
 ```
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/359501f0-ba9f-413c-9756-ca24a412990b" />
 
----
 
-## Install FFprobe
+### `group.txt`
 
-Install FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) and make sure `ffprobe` is available in `PATH`.
-
-Verify:
-
-```bash
-ffprobe -version
-```
-
----
-
-# TMDb API Setup
-
-The script includes a built-in shared TMDb token.
-
-For higher rate limits or your own API access, create a [TMDb API token](https://www.themoviedb.org/settings/api) and place it in:
+Contains a TMDb Episode Group ID for alternate episode ordering.
 
 ```text
-personal_tmdb_token
+69afde2c03e49b16d980f4d7
+```
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/4d51fcf5-a824-4cb7-b083-025eb8b93a73" />
+
+
+### `mal.txt`
+
+Contains a single MyAnimeList ID used as an absolute AniList resolver for anime in that folder.
+
+```text
+30831
+```
+When present, the AniList lookup uses this ID directly instead of relying on filename/date matching. This is especially useful for sequels with different titles.
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/efddfa54-fe87-45be-8874-ec5e26bcd6f9" />
+
+
+### `titles.txt`
+
+Generic episode title file:
+
+```text
+episode_number|title|release_date
 ```
 
-You can configure it through the menu or directly in `config.json`.
+Example:
+
+```text
+1|Pilot|2008-01-20
+2|Episode Two|2008-01-27
+```
+
+Displays episodes as:
+
+```text
+Episode 01: Pilot
+Episode 02: Episode Two
+```
+
+### `titles_sX.txt`
+
+Season-specific title file.
+
+Example `titles_s2.txt`:
+
+```text
+1|Seven Thirty-Seven|2009-03-08
+2|Down|2009-03-15
+```
+
+Displays:
+
+```text
+S02E01: Seven Thirty-Seven
+S02E02: Down
+```
+
+The season number from `titles_sX.txt` can override the season parsed from the filename.
+
+If multiple titles files are present in the same folder, the script skips them to avoid ambiguity.
 
 ---
 
@@ -413,82 +494,6 @@ You can configure it through the menu or directly in `config.json`.
 | `dont` | string | `okay` | Just Don't. |
 | `customImage` | array | `[""]` | Custom image URLs used instead of the automatic poster. |
 | `cleanRegex` | array | *(see config)* | Extra filename-cleaning regex patterns. |
-
----
-
-# Folder Metadata
-
-Place these files in the same folder as the video:
-
-### `tmdb.txt`
-
-Contains a single TMDb ID.
-
-```text
-1396
-```
-
-### `group.txt`
-
-Contains a TMDb Episode Group ID for alternate episode ordering.
-
-```text
-69afde2c03e49b16d980f4d7
-```
-
-### `mal.txt`
-
-Contains a single MyAnimeList ID used as an absolute AniList resolver for anime in that folder.
-
-```text
-39783
-```
-
-When present, the AniList lookup uses this ID directly instead of relying on filename/date matching. This is especially useful for sequels with different titles.
-
-### `titles.txt`
-
-Generic episode title file:
-
-```text
-episode_number|title|release_date
-```
-
-Example:
-
-```text
-1|Pilot|2008-01-20
-2|Episode Two|2008-01-27
-```
-
-Displays episodes as:
-
-```text
-Episode 01: Pilot
-Episode 02: Episode Two
-```
-
-### `titles_sX.txt`
-
-Season-specific title file.
-
-Example `titles_s2.txt`:
-
-```text
-1|Seven Thirty-Seven|2009-03-08
-2|Down|2009-03-15
-```
-
-Displays:
-
-```text
-S02E01: Seven Thirty-Seven
-S02E02: Down
-```
-
-The season number from `titles_sX.txt` can override the season parsed from the filename.
-
-If multiple titles files are present in the same folder, the script skips them to avoid ambiguity.
 
 ---
 

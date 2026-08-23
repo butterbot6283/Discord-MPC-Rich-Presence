@@ -8,12 +8,59 @@ const { cleanName } = require('./utils');
 
 let lastFilePath = null;
 let cachedMetadata = null;
+let cachedPlayerAppearance = null;
+let nextPlayerInfoRetryAt = 0;
 
-const resetMpcCache = () => { lastFilePath = null; cachedMetadata = null; };
+// The WebServer's info.html identifies the player build. Keep the Discord
+// fallback artwork here so every caller uses the same player-specific value.
+const MPC_APPEARANCES = {
+    'MPC-HC': { name: 'MPC-HC', link: 'https://github.com/clsid2/mpc-hc', largeImageKey: 'https://i.imgur.com/MwZqLN8.png' },
+    'MPC-BE': { name: 'MPC-BE', link: 'https://github.com/Aleksoid1978/MPC-BE', largeImageKey: 'https://i.imgur.com/2cdLids.png' },
+    'MPC-QT': { name: 'MPC-QT', link: 'https://github.com/mpc-qt/mpc-qt', largeImageKey: 'https://i.imgur.com/lJlHY25.png' },
+};
+const DEFAULT_PLAYER_APPEARANCE = MPC_APPEARANCES['MPC-HC'];
+
+const resetMpcCache = () => {
+    lastFilePath = null;
+    cachedMetadata = null;
+    cachedPlayerAppearance = null;
+    nextPlayerInfoRetryAt = 0;
+};
+
+function detectPlayerAppearance(infoHtml) {
+    const infoText = String(infoHtml || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\s+/g, ' ');
+
+    if (/\bMPC\s*[- ]\s*BE\b/i.test(infoText)) return MPC_APPEARANCES['MPC-BE'];
+    if (/\bMPC\s*[- ]\s*QT\b/i.test(infoText)) return MPC_APPEARANCES['MPC-QT'];
+    if (/\bMPC\s*[- ]\s*HC\b/i.test(infoText)) return MPC_APPEARANCES['MPC-HC'];
+    return null;
+}
+
+async function getPlayerAppearance() {
+    if (cachedPlayerAppearance) return cachedPlayerAppearance;
+    if (Date.now() < nextPlayerInfoRetryAt) return DEFAULT_PLAYER_APPEARANCE;
+
+    try {
+        const response = await axios.get('http://127.0.0.1:13579/info.html', { timeout: 2000 });
+        cachedPlayerAppearance = detectPlayerAppearance(response.data) || DEFAULT_PLAYER_APPEARANCE;
+        return cachedPlayerAppearance;
+    } catch (_) {
+        // Do not let an unavailable info endpoint interrupt normal playback.
+        // Try again later in case the WebServer is still starting up.
+        nextPlayerInfoRetryAt = Date.now() + 60000;
+        return DEFAULT_PLAYER_APPEARANCE;
+    }
+}
 
 const getMpcStatus = async (config) => {
     try {
-        const response = await axios.get('http://127.0.0.1:13579/variables.html');
+        const [response, playerAppearance] = await Promise.all([
+            axios.get('http://127.0.0.1:13579/variables.html'),
+            getPlayerAppearance(),
+        ]);
         const data = response.data;
         const fileNameMatch = data.match(/<p id="file">(.+?)<\/p>/);
         let rawFileName = fileNameMatch ? fileNameMatch[1].trim() : 'Unknown File';
@@ -79,7 +126,8 @@ const getMpcStatus = async (config) => {
             isPaused: /<p id="state">1<\/p>/.test(data),
             isStopped: /<p id="state">-1<\/p>/.test(data),
             tmdbID: ids.tmdbID, groupID: ids.groupID, malID: ids.malID,
-            debugIds, isFallback, filePath, ffprobeStatus
+            debugIds, isFallback, filePath, ffprobeStatus,
+            playerAppearance
         };
     } catch (error) {
         if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') return { isOffline: true };
@@ -87,4 +135,4 @@ const getMpcStatus = async (config) => {
     }
 };
 
-module.exports = { getMpcStatus, resetMpcCache };
+module.exports = { getMpcStatus, resetMpcCache, DEFAULT_PLAYER_APPEARANCE };

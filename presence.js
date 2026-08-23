@@ -216,7 +216,8 @@ async function updatePresence(mpcStatus, setActivity) {
 
     if (cachedShowTitle) showTitle = cachedShowTitle;
 
-    let largeImageKey = 'https://i.imgur.com/MwZqLN8.png';
+    const playerAppearance = mpcStatus.playerAppearance || mpc.DEFAULT_PLAYER_APPEARANCE;
+    let largeImageKey = playerAppearance.largeImageKey;
     if (hasCustomImage) {
         largeImageKey = validCustomImages[currentCustomImageIndex] || validCustomImages[0];
     } else if (config.autoPoster && cachedPosters.length > 0) {
@@ -274,11 +275,18 @@ async function updatePresence(mpcStatus, setActivity) {
     // this guard enforces them after all presence-level overrides.
     if (mpcStatus.isStopped) {
         activityPayload.name = undefined;
-        activityPayload.details = 'Idling';
+        activityPayload.details = playerAppearance.name;
         activityPayload.state = 'Nothing is playing';
         activityPayload.smallImageText = 'Idle';
-        activityPayload.largeImageText = 'Media Player Classic';
-        activityPayload.detailsUrl = undefined;
+        activityPayload.largeImageKey = playerAppearance.largeImageKey;
+        activityPayload.largeImageText = playerAppearance.name;
+        activityPayload.detailsUrl = playerAppearance.link;
+        activityPayload.buttons = [
+            {
+                label: 'MPC Rich Presence',
+                url: 'https://github.com/butterbot6283/Discord-MPC-Rich-Presence'
+            }
+        ];
     }
 
     try {
@@ -300,14 +308,14 @@ async function updatePresence(mpcStatus, setActivity) {
             const imageSource = (hasCustomImage) ? `Config customImage -> Active (${validCustomImages.length} URL${validCustomImages.length > 1 ? 's' : ''})` :
             (!config.autoPoster) ? `Not Found -> autoPoster is OFF in config` :
             (cachedPosterSource && cachedPosterSource !== 'Not Found' && cachedPosterSource !== 'Error') ? `Success via ${cachedPosterSource} (${cachedPosters.length} poster${cachedPosters.length !== 1 ? 's' : ''} loaded)` :
-            `Not Found -> Fallback to default MPC-HC logo`;
+            `Not Found -> Fallback to default ${playerAppearance.name} logo`;
 
             const bigTextSource = (config.customBigText?.trim()) ? `Config customBigText -> "${config.customBigText}"` :
             (!showTitle && finalEpisodeTitle && mpcStatus.isPaused) ? `Overridden with Episode Title -> "${finalEpisodeTitle}"` :
             (config.autoDate && cachedTmdbReleaseDate) ? `TMDb API Date -> "${cachedTmdbReleaseDate}"` :
             (!config.autoDate && !fetchedReleaseDate) ? `Not Found -> autoDate is OFF in config` :
             (fetchedReleaseDate) ? `titles.txt -> "${fetchedReleaseDate}"` :
-            `Not Found -> Fallback to "MPC-HC"`;
+            `Not Found -> Fallback to "${playerAppearance.name}"`;
 
             const customImageURL = hasCustomImage ? "used" : null;
             const debugData = {

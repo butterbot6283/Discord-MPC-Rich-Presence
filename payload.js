@@ -6,20 +6,22 @@ const { formatTime, getFallbackName } = require('./utils');
 let idleStartTimestamp = null;
 
 function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseDate, largeImageKey, config, tmdbUrl) {
+    const playerAppearance = mpcStatus.playerAppearance || { name: 'MPC-HC', largeImageKey: 'https://i.imgur.com/MwZqLN8.png' };
+
     if (mpcStatus.isStopped) {
         if (idleStartTimestamp === null) {
             idleStartTimestamp = Date.now();
         }
 
         return {
-            details: 'Idling',
+            details: playerAppearance.name,
             state: 'Nothing is playing',
             type: 0,
             startTimestamp: idleStartTimestamp,
             smallImageKey: "https://imgur.com/DhYzyGS.png",
             smallImageText: "Idle",
-            largeImageKey: "https://i.imgur.com/MwZqLN8.png",
-            largeImageText: 'Media Player Classic',
+            largeImageKey: playerAppearance.largeImageKey,
+            largeImageText: playerAppearance.name,
         };
     }
 
@@ -40,7 +42,7 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
     if (mpcStatus.isPaused && !showTitle && fetchedEpisodeTitle) largeImageText = fetchedEpisodeTitle;
     else largeImageText = config.customBigText?.trim()
         ? config.customBigText
-        : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : 'MPC-HC');
+        : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : playerAppearance.name);
 
     const startTimestamp = Date.now() - (mpcStatus.position * 1000);
     const endTimestamp = mpcStatus.isPlaying

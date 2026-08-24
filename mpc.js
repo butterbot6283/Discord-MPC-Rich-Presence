@@ -124,7 +124,7 @@ const getMpcStatus = async (config) => {
             position: convertTimeToSec(currentTime), duration: convertTimeToSec(totalTime),
             isPlaying: /<p id="state">2<\/p>/.test(data),
             isPaused: /<p id="state">1<\/p>/.test(data),
-            isStopped: /<p id="state">-1<\/p>/.test(data),
+            isStopped: /<p id="state">(?:0|-1)<\/p>/.test(data),
             tmdbID: ids.tmdbID, groupID: ids.groupID, malID: ids.malID,
             debugIds, isFallback, filePath, ffprobeStatus,
             playerAppearance

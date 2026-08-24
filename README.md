@@ -2,7 +2,7 @@ I can't code and English isn't my native language. This script was created with 
 
 # MPC Discord Presence
 
-> A Node.js script to display **Media Player Classic (MPC-HC)** playback as a Discord Rich Presence — with automatic poster fetching, episode titles, TMDb integration, AniList anime title resolution, Romaji/season title support, slideshow, local caching, and live config reloading.
+> A Node.js script to display **Media Player Classic** playback as a Discord Rich Presence — with automatic poster fetching, episode titles, TMDb integration, AniList anime title resolution, Romaji/season title support, slideshow, local caching, and live config reloading.
 
 <div align="left">
 
@@ -13,7 +13,15 @@ I can't code and English isn't my native language. This script was created with 
 <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/20c238f8-1008-4165-973f-ba1bd2c7f625" />
 
 ## Idle
-<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/04ed2d03-558a-4b8d-863a-f89a7d20a429" />
+[MPC-HC](https://github.com/clsid2/mpc-hc)\
+<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/636b65c0-32c2-4533-8b5d-af70ac4e7db5" />
+
+[MPC-BE](https://github.com/Aleksoid1978/MPC-BE)\
+<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/fceb36f4-ed90-4590-ad0d-d6a46db8730d" />
+
+[MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)\
+<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/80c98ebc-501d-4028-9894-69ee085d52b5" />
+
 
 </div>
 
@@ -22,7 +30,7 @@ I can't code and English isn't my native language. This script was created with 
 # Requirements
 
 - **Node.js** v18 or higher
-- **MPC-HC** with the Web Interface enabled (default port `13579`)
+- **Media Player Classic** with the Web Interface enabled (default port `13579`)
 - **FFprobe** (part of FFmpeg) installed and available in `PATH`
 - **Discord** running on the system
 - Internet access for TMDb / AniList lookups
@@ -62,11 +70,11 @@ node --no-warnings menu.js
 
 ---
 
-## Enable MPC-HC Web Interface
+## Enable Media Player Classic Web Interface
 
 Open:
 
-**MPC-HC → View → Options → Player → Web Interface**
+**MPC-HC/BE/QT → View → Options → Player → Web Interface**
 
 Enable the Web Interface and allow localhost access.
 
@@ -593,7 +601,7 @@ TMDb: Monogatari Series — Season 2
 | `name` | Resolved show title |
 | `details` | Config custom text / show title / filename according to normal payload rules |
 | `state` | Local episode title → TMDb episode title → filename |
-| `largeImageKey` | Custom image → TMDb poster → default MPC-HC image |
+| `largeImageKey` | Custom image → TMDb poster → default MPC image |
 | `largeImageText` | Custom big text → tagline/date for movies → episode/date fallback |
 | `detailsUrl` | TMDb URL normally, or MAL URL when `romajiTitle` successfully resolves an AniList entry |
 
@@ -603,7 +611,7 @@ The presence continues to refresh approximately every 5 seconds, allowing slides
 
 ## Idle / Stopped
 
-Shows an idle state with the default MPC-HC image.
+Shows an idle state with the default MPC-HC/BE/QT image.
 
 ---
 
@@ -613,11 +621,7 @@ Shows an idle state with the default MPC-HC image.
 Yes. A shared built-in token is included. You only need your own token if you hit rate limits or want private access.
 
 **Does it work with other media player?**\
-No, but it works with all Media Player Classic series.\
-Just make sure port is [13579](#enable-mpc-hc-web-interface)
-- [MPC-HC](https://github.com/clsid2/mpc-hc)
-- [MPC-BE](https://github.com/Aleksoid1978/MPC-BE)
-- [MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)
+Nope. Only works with Media Player Classic.
 
 **Does this work for anime?**\
 Yes. TMDb remains the main metadata source. When `romajiTitle` is enabled and the media is Japanese anime, AniList is used to identify the specific anime entry and provide the season-specific title plus MAL ID.

@@ -57,7 +57,13 @@ cd Discord-MPC-Rich-Presence
 npm install
 ```
 
-Then run `menu.bat`.
+For the Windows GUI, double-click:
+
+```text
+menu-windows.vbs
+```
+
+The VBS launcher starts the same `menu.js` application using the Windows Forms GUI without opening an additional Node.js console window.
 
 ## Linux
 
@@ -65,8 +71,106 @@ Then run `menu.bat`.
 git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
 cd Discord-MPC-Rich-Presence
 npm install
-node --no-warnings menu.js
 ```
+
+For KDE Plasma, use:
+
+```bash
+./menu-linux-kde.sh
+```
+
+This starts the same `menu.js` application using the KDialog GUI.
+
+---
+
+# Menu / GUI
+
+The project uses a single `menu.js` for the menu system.
+
+The application supports three ways to run the menu:
+
+## Terminal / TUI
+
+Run `menu.js` directly with Node.js:
+
+```bash
+node menu.js
+```
+
+This starts the interactive **readline TUI**.
+
+The TUI is kept as the default when `menu.js` is launched directly, so it can still be used normally from a terminal on both Windows and Linux.
+
+The menu can be used to:
+
+* Start / stop the PM2 process
+* View live logs
+* Edit config options
+* Edit switches
+* Edit custom image / slideshow settings
+* Edit clean-regex rules
+
+## Windows GUI
+
+Double-click:
+
+```text
+menu-windows.vbs
+```
+
+The VBS launcher starts `menu.js` in **Windows Forms** mode.
+
+The Windows GUI is implemented using:
+
+* `menu.js` as the main application/menu logic
+* `gui-helper.ps1` as the WinForms backend
+* `menu-windows.vbs` as the double-click launcher
+
+The VBS launcher hides the Node.js console window, so only the WinForms menu is shown.
+
+The WinForms interface provides the same menu functions as the TUI while using native Windows dialogs and controls.
+
+## Linux KDE GUI
+
+Run or double-click:
+
+```bash
+./menu-linux-kde.sh
+```
+
+The KDE launcher starts `menu.js` in **KDialog** mode.
+
+The Linux GUI uses:
+
+* `menu.js` as the main application/menu logic
+* `kdialog` for graphical dialogs
+* `menu-linux-kde.sh` as the KDE launcher
+
+The KDE interface provides the same menu functions as the TUI.
+
+## Shared Menu Logic
+
+All three entry points use the same application logic:
+
+```text
+                    menu.js
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+       Terminal     Windows        KDE
+        TUI        WinForms      KDialog
+      readline      + VBS          + SH
+```
+### Launcher summary
+
+| Platform         | Launcher            | Interface     |
+| ---------------- | ------------------- | ------------- |
+| Windows terminal | `node menu.js`      | readline TUI  |
+| Windows GUI      | `menu-windows.vbs`  | Windows Forms |
+| Linux terminal   | `node menu.js`      | readline TUI  |
+| Linux KDE GUI    | `menu-linux-kde.sh` | KDialog       |
+
 
 ---
 

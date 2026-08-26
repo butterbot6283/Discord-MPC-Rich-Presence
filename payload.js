@@ -1,14 +1,17 @@
 // payload.js
 const { formatTime, getFallbackName } = require('./utils');
 
-// Persistent timestamp for the Stopped/Idle state.
-// Reused on every presence refresh so Discord's elapsed timer does not reset.
 let idleStartTimestamp = null;
+let pausedStartTimestamp = null;
+let pausedEndTimestamp = null;
 
 function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseDate, largeImageKey, config, tmdbUrl) {
     const playerAppearance = mpcStatus.playerAppearance || { name: 'MPC-HC', largeImageKey: 'https://i.imgur.com/MwZqLN8.png' };
 
     if (mpcStatus.isStopped) {
+        pausedStartTimestamp = null;
+        pausedEndTimestamp = null;
+
         if (idleStartTimestamp === null) {
             idleStartTimestamp = Date.now();
         }
@@ -25,11 +28,13 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
         };
     }
 
-    // Leaving Stopped/Idle: start a fresh idle timer next time playback stops.
     idleStartTimestamp = null;
 
     let stateText;
     if (mpcStatus.isPlaying) {
+        pausedStartTimestamp = null;
+        pausedEndTimestamp = null;
+
         if (fetchedEpisodeTitle) stateText = fetchedEpisodeTitle;
         else if (!mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) stateText = mpcStatus.title;
         else if (showTitle) stateText = mpcStatus.fileName;
@@ -44,10 +49,21 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
         ? config.customBigText
         : (fetchedReleaseDate ? `(${fetchedReleaseDate})` : playerAppearance.name);
 
-    const startTimestamp = Date.now() - (mpcStatus.position * 1000);
-    const endTimestamp = mpcStatus.isPlaying
-        ? startTimestamp + (mpcStatus.duration * 1000)
-        : startTimestamp + (mpcStatus.position * 1000);
+    let startTimestamp;
+    let endTimestamp;
+
+    if (mpcStatus.isPaused) {
+        if (pausedStartTimestamp === null) {
+            pausedStartTimestamp = Date.now() - (mpcStatus.position * 1000);
+            pausedEndTimestamp = pausedStartTimestamp + (mpcStatus.position * 1000);
+        }
+
+        startTimestamp = pausedStartTimestamp;
+        endTimestamp = pausedEndTimestamp;
+    } else {
+        startTimestamp = Date.now() - (mpcStatus.position * 1000);
+        endTimestamp = startTimestamp + (mpcStatus.duration * 1000);
+    }
 
     let nameText, detailsText, statusType;
     if (mpcStatus.isPlaying) {
@@ -80,14 +96,13 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
         type: 3,
         statusDisplayType: statusType,
         smallImageKey: mpcStatus.isPlaying
-            ? "https://i.imgur.com/8IYhOc2.png"
-            : "https://i.imgur.com/CCg9fxf.png",
+        ? "https://i.imgur.com/8IYhOc2.png"
+        : "https://i.imgur.com/CCg9fxf.png",
         smallImageText: mpcStatus.isPlaying ? "Playing" : "Paused",
         largeImageKey,
         largeImageText: largeImageText || mpcStatus.title,
     };
 
-    // Clickable media URL
     if (mpcStatus.isPlaying && tmdbUrl) {
         if (showTitle && detailsText === showTitle) {
             payload.detailsUrl = tmdbUrl;

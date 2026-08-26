@@ -10,6 +10,8 @@ let lastFilePath = null;
 let cachedMetadata = null;
 let cachedPlayerAppearance = null;
 let nextPlayerInfoRetryAt = 0;
+let cachedTxtDirectory = null;
+let cachedTxtIds = { tmdbID: null, groupID: null, malID: null };
 
 // The WebServer's info.html identifies the player build. Keep the Discord
 // fallback artwork here so every caller uses the same player-specific value.
@@ -27,11 +29,30 @@ const resetMpcCache = () => {
     nextPlayerInfoRetryAt = 0;
 };
 
+function refreshTxtMetadata(videoDir) {
+    if (!videoDir) {
+        cachedTxtDirectory = null;
+        cachedTxtIds = { tmdbID: null, groupID: null, malID: null };
+        return cachedTxtIds;
+    }
+
+    cachedTxtDirectory = videoDir;
+    cachedTxtIds = fetchIdsFromTxt(videoDir);
+    return cachedTxtIds;
+}
+
+function getTxtMetadata(videoDir) {
+    if (videoDir !== cachedTxtDirectory) {
+        return refreshTxtMetadata(videoDir);
+    }
+    return cachedTxtIds;
+}
+
 function detectPlayerAppearance(infoHtml) {
     const infoText = String(infoHtml || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/\s+/g, ' ');
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ');
 
     if (/\bMPC\s*[- ]\s*BE\b/i.test(infoText)) return MPC_APPEARANCES['MPC-BE'];
     if (/\bMPC\s*[- ]\s*QT\b/i.test(infoText)) return MPC_APPEARANCES['MPC-QT'];
@@ -50,7 +71,7 @@ async function getPlayerAppearance() {
     } catch (_) {
         // Do not let an unavailable info endpoint interrupt normal playback.
         // Try again later in case the WebServer is still starting up.
-        nextPlayerInfoRetryAt = Date.now() + 60000;
+        nextPlayerInfoRetryAt = Date.now() + 10000;
         return DEFAULT_PLAYER_APPEARANCE;
     }
 }
@@ -59,7 +80,7 @@ const getMpcStatus = async (config) => {
     try {
         const [response, playerAppearance] = await Promise.all([
             axios.get('http://127.0.0.1:13579/variables.html'),
-            getPlayerAppearance(),
+                                                               getPlayerAppearance(),
         ]);
         const data = response.data;
         const fileNameMatch = data.match(/<p id="file">(.+?)<\/p>/);
@@ -95,7 +116,7 @@ const getMpcStatus = async (config) => {
             }
 
             const videoDir = path.dirname(filePath);
-            const txtIds = fetchIdsFromTxt(videoDir);
+            const txtIds = getTxtMetadata(videoDir);
             if (txtIds.tmdbID) ids.tmdbID = txtIds.tmdbID;
             ids.groupID = txtIds.groupID || null;
             ids.malID = txtIds.malID || null;
@@ -135,4 +156,4 @@ const getMpcStatus = async (config) => {
     }
 };
 
-module.exports = { getMpcStatus, resetMpcCache, DEFAULT_PLAYER_APPEARANCE };
+module.exports = { getMpcStatus, resetMpcCache, refreshTxtMetadata, DEFAULT_PLAYER_APPEARANCE };

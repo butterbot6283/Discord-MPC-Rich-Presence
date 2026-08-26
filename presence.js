@@ -29,10 +29,14 @@ let lastFetchedTitlesFileName = null, cachedFetchedTitles = null;
 
 let currentWatchedFolder = null;
 let txtWatcher = null;
+let txtWatchTimeout = null;
 
-const resetAllCaches = () => {
-    mpc.resetMpcCache();
-    cachedFetchedTitles = null; lastFetchedTitlesFileName = null;
+// Presence/metadata caches only. MPC's ffprobe and player-information caches
+// are intentionally kept alive so a TXT/config change does not cause ffprobe
+// or /info.html to run again unnecessarily.
+const resetPresenceCaches = () => {
+    cachedFetchedTitles = null;
+    lastFetchedTitlesFileName = null;
     cachedPosters = []; currentPosterIndex = 0; currentCustomImageIndex = 0;
     cachedShowTitle = null; cachedAnilistMatchMode = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedMediaUrl = null; cachedTitleSourceDebug = 'none'; cachedTmdbReleaseDate = null; cachedTmdbTagline = null;
     lastFetchedFileName = null; lastTmdbId = null;
@@ -50,7 +54,6 @@ fs.watch(configPath, (eventType) => {
             const oldConfig = { ...config };
             config = newConfig;
 
-            // Hapus pengecekan anilistTitleOverride di sini
             const apiChanged = oldConfig.autoPoster !== newConfig.autoPoster ||
             oldConfig.autoEpisode !== newConfig.autoEpisode ||
             oldConfig.autoDate !== newConfig.autoDate ||
@@ -69,10 +72,12 @@ fs.watch(configPath, (eventType) => {
                 const changedKeys = Object.keys(newConfig).filter(k => JSON.stringify(oldConfig[k]) !== JSON.stringify(newConfig[k]));
                 logger.logConfigChanged(changedKeys, apiChanged);
                 if (apiChanged) {
-                    resetAllCaches();
+                    resetPresenceCaches();
                 }
 
                 if (lastMpcStatus && !lastMpcStatus.isOffline && updateCallback) {
+                    // Config changes are event-driven. Do not wait for the next
+                    // 5-second MPC poll before updating Discord.
                     await updatePresence(lastMpcStatus, updateCallback);
                 }
             }
@@ -83,6 +88,63 @@ fs.watch(configPath, (eventType) => {
 const setUpdateCallback = (cb) => { updateCallback = cb; };
 const getConfig = () => config;
 
+async function refreshPresenceAfterTxtChange(filename) {
+    if (!lastMpcStatus || lastMpcStatus.isOffline || !updateCallback || !currentWatchedFolder) return;
+
+    // Reset only the presence/metadata layer. Keep ffprobe/player caches.
+    resetPresenceCaches();
+
+    // tmdb.txt/group.txt/mal.txt are cached in mpc.js, so explicitly refresh
+    // them only when a relevant TXT file actually changes.
+    if (/^(tmdb|group|mal)\.txt$/i.test(filename)) {
+        mpc.refreshTxtMetadata(currentWatchedFolder);
+    }
+
+    // Fetch the current MPC state once so newly changed TXT metadata is
+    // reflected immediately. This is event-driven, not a repeating poll.
+    const freshStatus = await mpc.getMpcStatus(config);
+    if (!freshStatus || freshStatus.isOffline || freshStatus.isError) return;
+
+    lastMpcStatus = freshStatus;
+    await updatePresence(freshStatus, updateCallback);
+}
+
+function watchVideoFolder(folder) {
+    if (folder === currentWatchedFolder) return;
+
+    if (txtWatcher) txtWatcher.close();
+    if (txtWatchTimeout) clearTimeout(txtWatchTimeout);
+
+    currentWatchedFolder = folder;
+    if (!folder) {
+        txtWatcher = null;
+        return;
+    }
+
+    // Prime the TXT cache once when entering a new folder. Subsequent 5-second
+    // MPC polls reuse this cached result and do not touch the TXT files.
+    mpc.refreshTxtMetadata(folder);
+
+    try {
+        txtWatcher = fs.watch(folder, (eventType, filename) => {
+            if (!filename || !/^(tmdb|titles|group|mal)\.txt$/i.test(filename)) return;
+
+            logger.logTxtWatcherEvent(filename);
+
+            // Editors may emit multiple fs.watch events for one save/replace.
+            // Debounce them so one logical edit causes only one RPC refresh.
+            if (txtWatchTimeout) clearTimeout(txtWatchTimeout);
+            txtWatchTimeout = setTimeout(async () => {
+                try {
+                    await refreshPresenceAfterTxtChange(filename);
+                } catch (e) {}
+            }, 200);
+        });
+    } catch (e) {
+        txtWatcher = null;
+    }
+}
+
 async function handleStatus(status, client) {
     lastMpcStatus = status;
 
@@ -90,7 +152,7 @@ async function handleStatus(status, client) {
         logger.logMpcError(status.errorCode, status.errorMessage);
         lastPlaybackState = 'offline';
         if (client && client.user) client.user.clearActivity().catch(() => {});
-        resetAllCaches();
+        resetPresenceCaches();
         return;
     }
 
@@ -98,7 +160,7 @@ async function handleStatus(status, client) {
         logger.logOffline();
         lastPlaybackState = 'offline';
         if (client && client.user) client.user.clearActivity().catch(() => {});
-        resetAllCaches();
+        resetPresenceCaches();
         return;
     }
 
@@ -122,18 +184,7 @@ async function updatePresence(mpcStatus, setActivity) {
 
     const currentFolder = mpcStatus.filePath ? path.dirname(mpcStatus.filePath) : null;
     if (currentFolder && currentFolder !== currentWatchedFolder) {
-        if (txtWatcher) txtWatcher.close();
-        currentWatchedFolder = currentFolder;
-        try {
-            txtWatcher = fs.watch(currentFolder, (eventType, filename) => {
-                if (filename && filename.match(/^(tmdb|titles|group|mal)\.txt$/i)) {
-                    logger.logTxtWatcherEvent(filename);
-                    lastFetchedFileName = null;
-                    lastFetchedTitlesFileName = null;
-                    resetAllCaches();
-                }
-            });
-        } catch(e) {}
+        watchVideoFolder(currentFolder);
     }
 
     if (isNewMedia) {
@@ -141,12 +192,12 @@ async function updatePresence(mpcStatus, setActivity) {
         cachedFetchedTitles = titles;
         fetchedEpisodeTitle = titles.episodeTitle;
         fetchedReleaseDate = titles.releaseDate;
-        forcedSeason = titles.forcedSeason; 
+        forcedSeason = titles.forcedSeason;
         lastFetchedTitlesFileName = mpcStatus.rawFileName;
     } else if (cachedFetchedTitles) {
         fetchedEpisodeTitle = cachedFetchedTitles.episodeTitle;
         fetchedReleaseDate = cachedFetchedTitles.releaseDate;
-        forcedSeason = cachedFetchedTitles.forcedSeason; 
+        forcedSeason = cachedFetchedTitles.forcedSeason;
     }
 
     const currentAutoTrigger = `${config.autoPoster}-${config.autoEpisode}-${config.autoDate}`;
@@ -251,11 +302,11 @@ async function updatePresence(mpcStatus, setActivity) {
 
     if (!showTitle && finalEpisodeTitle) {
         if (mpcStatus.isPlaying) {
-            activityPayload.details = mpcStatus.fileName; 
-            activityPayload.state = finalEpisodeTitle;    
+            activityPayload.details = mpcStatus.fileName;
+            activityPayload.state = finalEpisodeTitle;
         } else if (mpcStatus.isPaused) {
-            activityPayload.details = mpcStatus.fileName; 
-            activityPayload.largeImageText = finalEpisodeTitle; 
+            activityPayload.details = mpcStatus.fileName;
+            activityPayload.largeImageText = finalEpisodeTitle;
         }
     }
 
@@ -324,7 +375,7 @@ async function updatePresence(mpcStatus, setActivity) {
                 cachedApiEpisodeTitle: config.autoEpisode ? cachedApiEpisodeTitle : null,
                 fetchedEpisodeTitle,
                 posterCount: cachedPosters.length,
-                showTitle: showTitle, 
+                showTitle: showTitle,
                 titleSourceDebug: cachedTitleSourceDebug,
                 anilistMatchMode: cachedAnilistMatchMode
             };

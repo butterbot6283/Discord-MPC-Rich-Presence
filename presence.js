@@ -153,6 +153,7 @@ async function handleStatus(status, client) {
         lastPlaybackState = 'offline';
         if (client && client.user) client.user.clearActivity().catch(() => {});
         resetPresenceCaches();
+        mpc.resetMpcCache();
         return;
     }
 
@@ -161,6 +162,7 @@ async function handleStatus(status, client) {
         lastPlaybackState = 'offline';
         if (client && client.user) client.user.clearActivity().catch(() => {});
         resetPresenceCaches();
+        mpc.resetMpcCache();
         return;
     }
 

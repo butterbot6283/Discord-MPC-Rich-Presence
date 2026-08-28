@@ -15,14 +15,12 @@
         ""
     ],
     "cleanRegex": [
-        "\\b(2160p|1080p|720p|480p)\\b",
-        "\\b(BluRay|BRRip|BDRip|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|DVDRip|CAM|TS|TC)\\b",
-        "\\b(x264|x265|H264|H265|HEVC|AAC|AC3|EAC3|DTS|FLAC|10bit|8bit)\\b",
-        "\\b\\d{2,4}MB\\b",
-        "\\b\\d{1,2}\\.\\d{1,2}GB\\b",
-        "-?Pahe\\.in",
-        "-?PSA",
-        "-?YTS\\.[A-Z]{2}",
-        "-?Pahe\\.ph"
+        "\\b(2160p|1080p|1080i|720p|480p|360p|4K|8K|UHD|FHD|HD)\\b",
+        "\\b(BluRay|Blu-Ray|BRRip|BDRip|BDR|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|PDTV|DVDRip|DVDScr|CAM|TS|TC|VODRip)\\b",
+        "\\b(x264|x265|H\\.?264|H\\.?265|HEVC|AVC|DivX|XviD|10-?bit|8-?bit|12-?bit|HDR(?:10)?|DV|Dolby\\s*Vision|SDR)\\b",
+        "\\b(AAC|AC3|EAC3|DTS(?:-HD)?|FLAC|TrueHD|Atmos|DD\\.?5\\.1|DD\\.?7\\.1|Dual[- ]Audio|Opus|MP3|2CH|6CH)\\b",
+        "\\b\\d+(?:\\.\\d+)?(?:MB|GB)\\b",
+        "-?(Pahe\\.(in|ph)|PSA|YTS\\.[a-zA-Z]{2}|YIFY)",
+        "[\\.\\-\\s]+(?=\\.(mkv|mp4|avi|flv)$)"
     ]
 }

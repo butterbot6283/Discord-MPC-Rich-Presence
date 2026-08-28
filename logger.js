@@ -239,7 +239,7 @@ function logNewMedia(mpcStatus, activityPayload, debugData, config) {
     } else if (isCache) {
         console.log(statusLine('Metadata source', '📂', `Local cache hit → ${cleanSource}`));
         console.log(statusLine('API request', '⚡', 'No new TMDb metadata request for this cached entry'));
-    } else if (posterOk) {
+    } else if (debugData.posterCount > 0) {
         console.log(statusLine('Metadata source', '🌐', `Fresh API result → ${cleanSource}`));
         console.log(statusLine('API request', '✅', 'TMDb metadata fetch succeeded'));
     } else {

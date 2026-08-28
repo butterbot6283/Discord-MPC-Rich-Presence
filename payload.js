@@ -5,7 +5,7 @@ let idleStartTimestamp = null;
 let pausedStartTimestamp = null;
 let pausedEndTimestamp = null;
 
-function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseDate, largeImageKey, config, tmdbUrl) {
+function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseDate, largeImageKey, config, tmdbUrl, mediaType) {
     const playerAppearance = mpcStatus.playerAppearance || { name: 'MPC-HC', largeImageKey: 'https://i.imgur.com/MwZqLN8.png' };
 
     if (mpcStatus.isStopped) {
@@ -29,6 +29,10 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
     }
 
     idleStartTimestamp = null;
+	const useMetadataTitle = (mediaType !== 'movie');
+	const mediaTitleOrFile = (useMetadataTitle && !mpcStatus.isFallback && mpcStatus.title) 
+        ? mpcStatus.title 
+        : mpcStatus.fileName;
 
     let stateText;
     if (mpcStatus.isPlaying) {
@@ -36,7 +40,7 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
         pausedEndTimestamp = null;
 
         if (fetchedEpisodeTitle) stateText = fetchedEpisodeTitle;
-        else if (!mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) stateText = mpcStatus.title;
+        else if (useMetadataTitle && !mpcStatus.isFallback && mpcStatus.title && mpcStatus.title !== mpcStatus.fileName) stateText = mpcStatus.title;
         else if (showTitle) stateText = mpcStatus.fileName;
         else stateText = getFallbackName(mpcStatus.rawFileName);
     } else {
@@ -73,7 +77,7 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
     } else {
         if (showTitle) {
             nameText = showTitle;
-            detailsText = fetchedEpisodeTitle || (!mpcStatus.isFallback ? mpcStatus.title : mpcStatus.fileName);
+            detailsText = fetchedEpisodeTitle || mediaTitleOrFile;
             statusType = 0;
         } else if (fetchedEpisodeTitle) {
             nameText = undefined;
@@ -100,7 +104,7 @@ function buildPayload(mpcStatus, showTitle, fetchedEpisodeTitle, fetchedReleaseD
         : "https://i.imgur.com/CCg9fxf.png",
         smallImageText: mpcStatus.isPlaying ? "Playing" : "Paused",
         largeImageKey,
-        largeImageText: largeImageText || mpcStatus.title,
+        largeImageText: largeImageText || mediaTitleOrFile,
     };
 
     if (mpcStatus.isPlaying && tmdbUrl) {

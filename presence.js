@@ -23,7 +23,7 @@ let lastMpcStatus = null;
 
 let cachedPosters = [], currentPosterIndex = 0, lastSlideshowTick = 0;
 let currentCustomImageIndex = 0;
-let cachedShowTitle = null, cachedApiEpisodeTitle = null, cachedPosterSource = null, cachedMediaUrl = null, cachedTitleSourceDebug = 'none', cachedAnilistMatchMode = null, cachedTmdbReleaseDate = null, cachedPosterDebug = null, cachedTmdbTagline = null;
+let cachedShowTitle = null, cachedApiEpisodeTitle = null, cachedPosterSource = null, cachedMediaUrl = null, cachedTitleSourceDebug = 'none', cachedAnilistMatchMode = null, cachedTmdbReleaseDate = null, cachedPosterDebug = null, cachedTmdbTagline = null, cachedMediaType = null;
 let lastFetchedFileName = null, lastTmdbId = null, lastConfigTmdbId = null, lastAutoTrigger = null;
 let lastFetchedTitlesFileName = null, cachedFetchedTitles = null;
 
@@ -38,7 +38,7 @@ const resetPresenceCaches = () => {
     cachedFetchedTitles = null;
     lastFetchedTitlesFileName = null;
     cachedPosters = []; currentPosterIndex = 0; currentCustomImageIndex = 0;
-    cachedShowTitle = null; cachedAnilistMatchMode = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedMediaUrl = null; cachedTitleSourceDebug = 'none'; cachedTmdbReleaseDate = null; cachedTmdbTagline = null;
+    cachedShowTitle = null; cachedAnilistMatchMode = null; cachedApiEpisodeTitle = null; cachedPosterSource = null; cachedPosterDebug = null; cachedMediaUrl = null; cachedTitleSourceDebug = 'none'; cachedTmdbReleaseDate = null; cachedTmdbTagline = null; cachedMediaType = null;
     lastFetchedFileName = null; lastTmdbId = null;
     lastConfigTmdbId = null; lastAutoTrigger = null;
 };
@@ -232,6 +232,7 @@ async function updatePresence(mpcStatus, setActivity) {
             cachedTmdbTagline = result.tmdbTagline || null;
             cachedPosterSource = result.source || 'Not Found';
             cachedPosterDebug = result.debugInfo || null;
+			cachedMediaType = result.mediaType || null;
 
             lastFetchedFileName = mpcStatus.rawFileName; lastTmdbId = mpcStatus.tmdbID;
             lastConfigTmdbId = config.tmdb_id; lastAutoTrigger = currentAutoTrigger;
@@ -300,7 +301,7 @@ async function updatePresence(mpcStatus, setActivity) {
 
     const finalReleaseDate = (config.autoDate ? cachedTmdbReleaseDate : null) || fetchedReleaseDate;
 
-    let activityPayload = buildPayload(mpcStatus, showTitle, finalEpisodeTitle, finalReleaseDate, largeImageKey, config, cachedMediaUrl);
+    let activityPayload = buildPayload(mpcStatus, showTitle, finalEpisodeTitle, finalReleaseDate, largeImageKey, config, cachedMediaUrl, cachedMediaType);
 
     if (!showTitle && finalEpisodeTitle) {
         if (mpcStatus.isPlaying) {

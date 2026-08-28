@@ -358,6 +358,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                 posters: selectCachedPosters(seriesData, config),
                 showTitle: finalShowTitle,
                 mediaUrl: finalMediaUrl,
+				mediaType: seriesData.tmdbUrl ? (seriesData.tmdbUrl.includes('/tv/') ? 'tv' : 'movie') : null,
                 titleSourceDebug: resolved.sourceDebug,
                 anilistMatchMode: seasonOverride?.source === 'mal.txt' ? 'mal.txt' : (seasonOverride?.source === 'anilist' ? (seasonOverride.matchMode || 'date-exact') : null),
                 tmdbEpisodeTitle: localEpisodeMatched ? localEpisodeTitle : (epData ? epData.tmdbEpisodeTitle : null),
@@ -437,6 +438,12 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
             result.mediaUrl = resolved.url;
             result.titleSourceDebug = resolved.sourceDebug;
             result.posters = selectCachedPosters(cacheData[cacheKey], config);
+			
+			if (cacheData[cacheKey].tmdbUrl) {
+                result.mediaType = cacheData[cacheKey].tmdbUrl.includes('/tv/') ? 'tv' : 'movie';
+            } else {
+                result.mediaType = null;
+            }
 
             if (!config.autoPoster) result.showTitle = null;
 

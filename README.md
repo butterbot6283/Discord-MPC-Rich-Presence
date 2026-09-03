@@ -1,40 +1,69 @@
-I can't code and English isn't my native language. This script was created with AI assistance; I mainly do testing and prompting. If you find this repo, please figure out how to use it yourself. This README is also written with AI assistance. I hope it is easy to understand.
+# Discord MPC Rich Presence
 
-# MPC Discord Presence
+A Node.js script that shows **Media Player Classic** playback in Discord Rich Presence.
 
-> A Node.js script to display **Media Player Classic** playback as a Discord Rich Presence — with automatic poster fetching, episode titles, TMDb integration, AniList anime title resolution, Romaji/season title support, slideshow, local caching, and live config reloading.
+It can:
+- detect the video title from FFprobe or the filename
+- fetch posters and metadata from TMDb
+- resolve Japanese anime season titles through AniList
+- show local episode titles from `.txt` files
+- rotate posters or custom images
+- cache API results locally
+- reload `config.json` and folder metadata without restarting the player
 
-<div align="left">
+## Preview
 
-## Playing
+### Playing
+
 <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/11bef610-d18a-45b5-86d4-bedc46b691a1" /> <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/f07add1f-28a7-4461-81ef-0c6aff68bbcc" />
 
-## Paused
+---
+### Paused
+
 <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/20c238f8-1008-4165-973f-ba1bd2c7f625" />
 
-## Idle
-[MPC-HC](https://github.com/clsid2/mpc-hc)\
-<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/636b65c0-32c2-4533-8b5d-af70ac4e7db5" />
+---
+### Idle
 
-[MPC-BE](https://github.com/Aleksoid1978/MPC-BE)\
-<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/fceb36f4-ed90-4590-ad0d-d6a46db8730d" />
-
-[MPC-QT](https://github.com/mpc-qt/mpc-qt) (For Linux)\
-<img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/80c98ebc-501d-4028-9894-69ee085d52b5" />
-
-
-</div>
+<table>
+  <tr>
+    <th align="left">MPC-HC</th>
+    <th align="left">MPC-BE</th>
+  </tr>
+  <tr>
+    <td>
+      <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/636b65c0-32c2-4533-8b5d-af70ac4e7db5" />
+    </td>
+    <td>
+      <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/fceb36f4-ed90-4590-ad0d-d6a46db8730d" />
+    </td>
+  </tr>
+  <tr>
+    <th align="left">MPC-QT (Linux)</th>
+  </tr>
+  <tr>
+    <td>
+      <img width="415" height="149" alt="image" src="https://github.com/user-attachments/assets/80c98ebc-501d-4028-9894-69ee085d52b5" />
+    </td>
+  </tr>
+</table>
 
 ---
+## Requirements
 
-# Requirements
+Install these before running the script:
 
-- **Node.js** v18 or higher
-- **Media Player Classic** with the Web Interface enabled (default port `13579`)
-- **FFprobe** (part of FFmpeg) installed and available in `PATH`
-- **Discord** running on the system
-- Internet access for TMDb / AniList lookups
-- npm packages installed with `npm install`
+- **[Node.js](https://nodejs.org/en/download) v18+ with npm**
+- **Media Player Classic**: [MPC-HC](https://github.com/clsid2/mpc-hc), [MPC-BE](https://github.com/Aleksoid1978/MPC-BE), or [MPC-QT](https://github.com/mpc-qt/mpc-qt)
+- **FFprobe** from [FFmpeg](https://www.ffmpeg.org), available in `PATH`
+- **Discord**
+- **Internet access** for TMDb and AniList lookups
+
+Install the Node.js packages with:
+
+```bash
+npm install
+```
 
 Main packages:
 
@@ -43,13 +72,11 @@ Main packages:
 - `@ctrl/video-filename-parser`
 - `pm2`
 
-AniList is accessed through its GraphQL API using the existing HTTP client, so no separate AniList npm package is required.
+AniList uses its GraphQL API through the existing HTTP client, so it does not need a separate npm package.
 
----
+## Installation
 
-# Installation
-
-## Windows
+### Windows
 
 ```bat
 git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
@@ -57,15 +84,15 @@ cd Discord-MPC-Rich-Presence
 npm install
 ```
 
-For the Windows GUI, double-click:
+Start the menu by double-clicking:
 
 ```text
 menu-windows.vbs
 ```
 
-The VBS launcher starts the same `menu.js` application using the Windows Forms GUI without opening an additional Node.js console window.
+The VBS launcher opens the Windows Forms menu without an extra Node.js console window.
 
-## Linux
+### Linux
 
 ```bash
 git clone https://github.com/butterbot6283/Discord-MPC-Rich-Presence.git
@@ -73,108 +100,17 @@ cd Discord-MPC-Rich-Presence
 npm install
 ```
 
-For KDE Plasma, use:
+On KDE Plasma, run or double-click:
 
 ```bash
 ./menu-linux-kde.sh
 ```
 
-This starts the same `menu.js` application using the KDialog GUI.
+The launcher opens the KDE dialog menu through `kdialog`.
 
----
+## First Setup
 
-# Menu / GUI
-
-The project uses a single `menu.js` for the menu system.
-
-The application supports three ways to run the menu:
-
-## Terminal / TUI
-
-Run `menu.js` directly with Node.js:
-
-```bash
-node menu.js
-```
-
-This starts the interactive **readline TUI**.
-
-The TUI is kept as the default when `menu.js` is launched directly, so it can still be used normally from a terminal on both Windows and Linux.
-
-The menu can be used to:
-
-* Start / stop the PM2 process
-* View live logs
-* Edit config options
-* Edit switches
-* Edit custom image / slideshow settings
-* Edit clean-regex rules
-
-## Windows GUI
-
-Double-click:
-
-```text
-menu-windows.vbs
-```
-
-The VBS launcher starts `menu.js` in **Windows Forms** mode.
-
-The Windows GUI is implemented using:
-
-* `menu.js` as the main application/menu logic
-* `gui-helper.ps1` as the WinForms backend
-* `menu-windows.vbs` as the double-click launcher
-
-The VBS launcher hides the Node.js console window, so only the WinForms menu is shown.
-
-The WinForms interface provides the same menu functions as the TUI while using native Windows dialogs and controls.
-
-## Linux KDE GUI
-
-Run or double-click:
-
-```bash
-./menu-linux-kde.sh
-```
-
-The KDE launcher starts `menu.js` in **KDialog** mode.
-
-The Linux GUI uses:
-
-* `menu.js` as the main application/menu logic
-* `kdialog` for graphical dialogs
-* `menu-linux-kde.sh` as the KDE launcher
-
-The KDE interface provides the same menu functions as the TUI.
-
-## Shared Menu Logic
-
-All three entry points use the same application logic:
-
-```text
-                    menu.js
-                       │
-          ┌────────────┼────────────┐
-          │            │            │
-          ▼            ▼            ▼
-       Terminal     Windows        KDE
-        TUI        WinForms      KDialog
-      readline      + VBS          + SH
-```
-### Launcher summary
-
-| Platform         | Launcher            | Interface     |
-| ---------------- | ------------------- | ------------- |
-| Windows terminal | `node menu.js`      | readline TUI  |
-| Windows GUI      | `menu-windows.vbs`  | Windows Forms |
-| Linux terminal   | `node menu.js`      | readline TUI  |
-| Linux KDE GUI    | `menu-linux-kde.sh` | KDialog       |
-
-
----
-
-## Enable Media Player Classic Web Interface
+### 1. Enable the MPC Web Interface
 
 Open:
 
@@ -182,336 +118,143 @@ Open:
 
 Enable the Web Interface and allow localhost access.
 
-The default port is:
+Default port:
 
 ```text
 13579
 ```
 
----
-
-## Install FFprobe
-
-Install FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) and make sure `ffprobe` is available in `PATH`.
-
-Verify:
+### 2. Check FFprobe
 
 ```bash
 ffprobe -version
 ```
 
----
+If the command fails, install FFmpeg and make sure its `bin` directory is in `PATH`.
 
-# TMDb API Setup
+### 3. Start the script
 
-The script includes a built-in shared TMDb token.
+You can use the graphical menu or run:
 
-For higher rate limits or your own API access, create a [TMDb API token](https://www.themoviedb.org/settings/api) and place it in:
-
-```text
-personal_tmdb_token
+```bash
+node menu.js
 ```
 
-You can configure it through the menu or directly in `config.json`.
+The terminal version uses a readline menu.
 
----
+## Menu
 
-## Features
+`menu.js` provides the same functions across the available interfaces:
 
-### Discord Rich Presence
+| Platform | Launcher | Interface |
+|---|---|---|
+| Windows | `menu-windows.vbs` | Windows Forms |
+| Linux KDE | `menu-linux-kde.sh` | KDialog |
+| Any platform | `node menu.js` | Terminal |
 
-Displays real-time playback status on your Discord profile. Shows the video title, current state (Playing/Paused/Idle), timestamps, poster/custom image, and a clickable metadata link when available.
+Use the menu to:
 
-The presence is refreshed continuously, including while **paused**, so slideshow rotation, config changes, and folder `.txt` edits can take effect without pressing Play again.
+- start or stop the PM2 process
+- view live logs
+- edit configuration
+- edit switches
+- edit custom images and slideshow settings
+- edit filename-cleaning rules
 
-### Video Title Detection (via FFprobe)
+## TMDb Setup
 
-Reads the embedded `title` tag from the video file using `ffprobe` with a 3-second timeout to prevent hangs.
+The project includes a shared TMDb token.
 
-FFprobe is only used for the embedded video title. **TMDb IDs, AniList IDs, and release dates are not taken from the video metadata.**
+You can add your own TMDb Bearer token for higher rate limits:
 
-If no title tag is available, the script falls back to filename-based detection.
+1. Create a token at [TMDb API settings](https://www.themoviedb.org/settings/api).
+2. Put it in `config.json` as `personal_tmdb_token`.
+3. You can also change it from the menu.
 
-### AutoPoster Pipeline (TMDb)
+```json
+{
+  "personal_tmdb_token": ""
+}
+```
 
-TMDb remains the main metadata source for posters, show/movie information, episode titles, release dates, and taglines.
+## How Metadata Lookup Works
 
-Lookup priority:
+The script checks metadata in this order:
 
-1. `tmdb.txt` / `group.txt` in the video's folder
+1. Folder files such as `tmdb.txt` and `group.txt`
 2. `tmdb_id` in `config.json`
-3. Filename search with the TMDb cascade search
+3. Automatic search from the filename
 
-Results are cached locally in `rpc_cache.json` inside the video folder, or in the project folder if the video folder is not writable.
+FFprobe only reads the embedded video `title` tag. It does not supply the TMDb ID, AniList ID, or release date.
 
-The cache is designed to keep fetched metadata available even when display switches are changed. Visual switches such as `autoPoster`, `romajiTitle`, and `autoEpisode` do not need to re-download already cached metadata just to change the displayed result.
+When the script cannot find a title tag, it uses the filename.
 
-### Cascade Filename Search
+### Filename Search
 
-When no TMDb ID is available, the script searches TMDb using a multi-stage cascade:
+When the folder has no TMDb ID, the script tries several searches:
 
-1. Cleaned title + parsed year
-2. Cleaned title without year
-3. Repeat the year/title attempts on the opposite media type (TV ↔ Movie)
-4. Remove explicit season indicators such as `S2`, `Season 2`, `Part 2`, or `Cour 2`, then retry
-5. As a last resort, remove a trailing standalone number or Roman numeral
+1. cleaned title + year
+2. cleaned title
+3. the other media type, TV or Movie
+4. the title without explicit season markers such as `S2`, `Season 2`, `Part 2`, or `Cour 2`
+5. the title without a trailing standalone number or Roman numeral
 
-Every retry can be shown in the structured terminal log so it is easier to diagnose a wrong match.
+The terminal log shows each search attempt.
 
----
+## Anime Titles with AniList
 
-## AniList Anime Title Resolution
+TMDb and AniList organize anime seasons differently.
 
-### Why AniList is used
-
-TMDb and AniList organize anime seasons differently. TMDb commonly stores a franchise as one TV show with multiple seasons, while AniList usually stores each anime/sequel as a separate entry.
-
-For example:
+A TMDb TV show can contain several seasons, while AniList can store each sequel as its own entry. For example:
 
 ```text
-TMDb
-Monogatari Series
+TMDb: Monogatari Series
 ├─ Season 1 → Bakemonogatari
 ├─ Season 2 → Nisemonogatari
 └─ Season 3 → ...
 ```
 
-AniList can instead return separate entries such as `Bakemonogatari`, `Nisemonogatari`, and so on. `romajiTitle` therefore uses AniList to resolve the specific anime entry that corresponds to the TMDb season.
+Enable:
 
-### `romajiTitle` behavior
-
-- **`romajiTitle: false`**
-  - Use the normal TMDb title or TMDb alternative title.
-  - Keep the TMDb clickable URL.
-- **`romajiTitle: true`**
-  - For Japanese anime, try to resolve the season-specific AniList entry.
-  - Use the AniList Romaji title when resolved.
-  - Use the corresponding MAL URL when an `idMal` is available.
-  - If AniList cannot be resolved, fall back to the TMDb title.
-- AniList lookup is skipped when the TMDb media `original_language` is not `ja`.
-
-### AniList matching
-
-When there is no `mal.txt`, the resolver searches AniList by title and requires an **exact premiere date match** against the first episode date from TMDb:
-
-```text
-TMDb season first episode date
-            │
-            ▼
-       AniList search
-            │
-            ├─ exact year
-            ├─ exact month
-            └─ exact day
-            │
-            ▼
-      format filtering
-            │
-            ▼
-   matching AniList entry
+```json
+"romajiTitle": true
 ```
 
-There is no loose date tolerance and no fallback to the first AniList search result. If no exact match is found, the AniList resolver fails safely and the title falls back to TMDb.
+For Japanese anime, the script then uses AniList to find the entry that matches the TMDb season.
 
-For Season 0, OVA/ONA/SPECIAL formats are preferred. For normal seasons, those special formats are avoided.
+### How the match works
 
-### Absolute MAL ID resolution with `mal.txt`
+Without `mal.txt`, the script compares:
 
-For anime folders that contain `mal.txt`, the ID inside the file is used as an **absolute AniList/MAL resolver**.
+- TMDb season first episode date
+- AniList `startDate`
+- AniList media format
 
-Example:
+The premiere date must match exactly. The resolver does not take the first AniList search result.
 
-```text
-39783
-```
-
-The script queries AniList by that MAL ID instead of guessing from the filename and premiere date. This is the most reliable method for franchises where sequel titles are very different.
-
-The resolved AniList title and MAL ID are stored in the local cache and reused for later episodes in the same TMDb season.
-
-### Episode formatting in AniList mode
-
-When the displayed show title actually comes from AniList:
-
-- **Season 0** → `Special Episode X: Title`
-- **Season 1+** → `Episode X: Title`
-
-When `romajiTitle` is enabled but the title falls back to a TMDb alternative title, the normal TMDb season formatting is kept instead (`S02E01: Title`, etc.).
-
-### AniList cache hydration
-
-AniList data is stored together with the normal TMDb metadata in `rpc_cache.json`. If an existing cache entry does not yet contain the AniList title for the requested season, the script can hydrate that entry without rebuilding all TMDb metadata.
-
-## Season-Aware Episode Formatting
-
-When episode titles come from TMDb (`autoEpisode`), the display format adapts to the season number:
-
-- **Season 0** → `Special Episode X: Title`
-- **Season 1** → `Episode X: Title`
-- **Season 2 and up** → `S0XE0X: Title`
-
-If a `titles_sX.txt` file exists in the video folder, its season number takes priority over the season parsed from the filename.
-
-Episode titles from `titles.txt` / `titles_sX.txt` keep their own local-file formatting and are not rewritten by the TMDb season formatting rule.
-
----
-
-## Movie Tagline & Release Date
-
-When a TMDb tagline is available and `customBigText` is not set, the tagline is shown as the **large image text** and the release date moves to the **small image text**.
-
-Example:
-
-```text
-Large text : "One. Last. Ride."
-Small text : (Jun 25, 2026)
-```
-
-If no tagline is available, the release date remains in the large image text.
-
-## Random Poster
-
-When `randomPoster` is enabled, a random poster is selected from the cached TMDb poster list.
-
-For normal media, the poster cache contains English and no-language posters. For Japanese anime, Japanese-language posters are also fetched and stored separately. When `romajiTitle` is enabled and `original_language === "ja"`, the Japanese posters are combined with the English/no-language posters for selection.
-
-Japanese poster images are not fetched for non-Japanese media.
-
----
-
-## Slideshow
-
-Set `slideshowInterval` (seconds) to rotate through multiple custom images or TMDb posters.
-
-- `randomPoster: true` → random rotation
-- `randomPoster: false` → sequential rotation
-- `slideshowInterval: 0` → disabled
-
-The slideshow continues to work while the video is paused.
-
----
-
-## Live Config Reload
-
-`presence.js` watches `config.json` with `fs.watch`.
-
-Changes are picked up automatically after the config file is saved.
-
-API-affecting settings can reset metadata state and trigger a fresh lookup, while display-only changes can be applied without unnecessarily refetching metadata.
-
-Examples of settings that can affect metadata resolution:
-
-- `autoPoster`
-- `autoEpisode`
-- `autoDate`
-- `romajiTitle`
-- `dont`
-- `tmdb_id`
-- `cleanFilename`
-
-Display-oriented settings include:
-
-- `customText`
-- `customBigText`
-- `customImage`
-- `slideshowInterval`
-- `randomPoster`
-
----
-
-## Live TXT Watcher
-
-The script watches the currently playing video's folder for:
-
-- `tmdb.txt`
-- `group.txt`
-- `titles.txt`
-- `titles_sX.txt`
-- `mal.txt`
-
-Adding or editing these files triggers a reload automatically, including while paused.
-
----
-
-## Auto Reconnect
-
-`index.js` handles Discord connection lifecycle automatically.
-
-If Discord disconnects, the old RPC client is cleaned up and a new connection attempt is made periodically until Discord is available again.
-
----
-
-## Structured Logging
-
-`logger.js` prints a detailed breakdown when new media is detected, including:
-
-- Raw and cleaned filename
-- Config overrides
-- TMDb / group ID source
-- Cache status
-- Poster source
-- Search / retry information
-- Episode title source
-- Display title source
-- Final Discord payload
-
-The logger also reports whether the visible show title came from TMDb or AniList when the relevant debug data is available.
-
-The terminal is automatically cleared after a number of update events to keep the output readable.
-
----
-
-## CLI Menu (`menu.js` / `menu.bat`)
-
-An interactive terminal menu built with `readline`.
-
-It can be used to:
-
-- Start / stop the PM2 process
-- View live logs
-- Edit config options
-- Apply changes without manually editing `config.json`
-
----
-
-# Folder Metadata
-
-Place these files in the same folder as the video:
-
-### `tmdb.txt`
-
-Contains a single TMDb ID.
-
-```text
-65844
-```
-<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/359501f0-ba9f-413c-9756-ca24a412990b" />
-
-
-### `group.txt`
-
-Contains a TMDb Episode Group ID for alternate episode ordering.
-
-```text
-69afde2c03e49b16d980f4d7
-```
-<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/4d51fcf5-a824-4cb7-b083-025eb8b93a73" />
-
+For Season 0, the resolver prefers OVA, ONA, and Special formats. For normal seasons, it avoids those formats.
 
 ### `mal.txt`
 
-Contains a single MyAnimeList ID used as an absolute AniList resolver for anime in that folder.
+For a difficult franchise, put the MAL ID of the exact anime entry in the video folder:
 
 ```text
 30831
 ```
-When present, the AniList lookup uses this ID directly instead of relying on filename/date matching. This is especially useful for sequels with different titles.
-<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/efddfa54-fe87-45be-8874-ec5e26bcd6f9" />
 
+The script uses that ID directly with AniList.
+
+This avoids filename and premiere-date matching and works well for sequels with different titles.
+
+When the AniList title resolves successfully, the RPC link uses the MAL URL.
+
+## Episode Titles
+
+The script supports local episode title files.
 
 ### `titles.txt`
 
-Generic episode title file:
+Use:
 
 ```text
 episode_number|title|release_date
@@ -524,7 +267,7 @@ Example:
 2|Episode Two|2008-01-27
 ```
 
-Displays episodes as:
+The RPC shows:
 
 ```text
 Episode 01: Pilot
@@ -533,31 +276,101 @@ Episode 02: Episode Two
 
 ### `titles_sX.txt`
 
-Season-specific title file.
+Use a season-specific file such as:
 
-Example `titles_s2.txt`:
+```text
+titles_s2.txt
+```
+
+Example:
 
 ```text
 1|Seven Thirty-Seven|2009-03-08
 2|Down|2009-03-15
 ```
 
-Displays:
+The RPC shows:
 
 ```text
 S02E01: Seven Thirty-Seven
 S02E02: Down
 ```
 
-The season number from `titles_sX.txt` can override the season parsed from the filename.
+The season in `titles_sX.txt` takes priority over the season parsed from the filename.
 
-If multiple titles files are present in the same folder, the script skips them to avoid ambiguity.
+Keep only one titles file in a folder. Multiple title files make the folder ambiguous, so the script skips them.
 
----
+### TMDb Episode Titles
 
-# Configuration
+When `autoEpisode` is enabled, TMDb episode formatting follows the season:
 
-## `config.json`
+| Season | Format |
+|---|---|
+| 0 | `Special Episode X: Title` |
+| 1 | `Episode X: Title` |
+| 2+ | `S0XE0X: Title` |
+
+The local `titles.txt` and `titles_sX.txt` formats stay unchanged.
+
+## Folder Metadata Files
+
+Put these files next to the videos.
+
+### `tmdb.txt`
+
+Contains one TMDb ID:
+
+```text
+65844
+```
+
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/359501f0-ba9f-413c-9756-ca24a412990b" />
+
+### `group.txt`
+
+Contains a TMDb Episode Group ID for alternate episode ordering:
+
+```text
+69afde2c03e49b16d980f4d7
+```
+
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/4d51fcf5-a824-4cb7-b083-025eb8b93a73" />
+
+### `mal.txt`
+
+Contains one MyAnimeList ID for AniList resolution:
+
+```text
+30831
+```
+
+<img width="1038" height="453" alt="image" src="https://github.com/user-attachments/assets/efddfa54-fe87-45be-8874-ec5e26bcd6f9" />
+
+### `titles.txt`
+
+Generic episode list:
+
+```text
+1|Episode One|2026-01-01
+2|Episode Two|2026-01-08
+```
+
+### `titles_sX.txt`
+
+Season-specific episode list:
+
+```text
+1|Episode One|2026-01-01
+2|Episode Two|2026-01-08
+```
+
+Use the filename `titles_s2.txt`, `titles_s3.txt`, and so on for the target season.
+
+## Configuration
+
+The main configuration file is `config.json`.
+
+Example:
 
 ```json
 {
@@ -565,236 +378,232 @@ If multiple titles files are present in the same folder, the script skips them t
     "tmdb_id": "",
     "customText": "",
     "customBigText": "",
-    "autoPoster": true,
-    "autoEpisode": true,
-    "autoDate": true,
+    "autoPoster": false,
+    "autoEpisode": false,
+    "autoDate": false,
     "cleanFilename": true,
     "romajiTitle": false,
-    "randomPoster": true,
+    "randomPoster": false,
     "slideshowInterval": 0,
     "dont": "okay",
-    "customImage": [""],
+    "customImage": [
+        ""
+    ],
     "cleanRegex": [
-        "\\b(2160p|1080p|720p|480p)\\b",
-        "\\b(BluRay|BRRip|BDRip|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|DVDRip|CAM|TS|TC)\\b",
-        "\\b(x264|x265|H264|H265|HEVC|AAC|AC3|EAC3|DTS|FLAC|10bit|8bit)\\b",
-        "\\b\\d{2,4}MB\\b",
-        "\\b\\d{1,2}\\.\\d{1,2}GB\\b",
-        "-?Pahe\\.in",
-        "-?PSA",
-        "-?YTS\\.[A-Z]{2}",
-        "-?Pahe\\.ph"
+        "\\b(2160p|1080p|1080i|720p|480p|360p|4K|8K|UHD|FHD|HD)\\b",
+        "\\b(BluRay|Blu-Ray|BRRip|BDRip|BDR|WEBRip|WEB-DL|WEB-HD|WEBDL|HDRip|HDTV|PDTV|DVDRip|DVDScr|CAM|TS|TC|VODRip)\\b",
+        "\\b(x264|x265|H\\.?264|H\\.?265|HEVC|AVC|DivX|XviD|10-?bit|8-?bit|12-?bit|HDR(?:10)?|DV|Dolby\\s*Vision|SDR)\\b",
+        "\\b(AAC|AC3|EAC3|DTS(?:-HD)?|FLAC|TrueHD|Atmos|DD\\.?5\\.1|DD\\.?7\\.1|Dual[- ]Audio|Opus|MP3|2CH|6CH)\\b",
+        "\\b\\d+(?:\\.\\d+)?(?:MB|GB)\\b",
+        "-?(Pahe\\.(in|ph)|PSA|YTS\\.[a-zA-Z]{2}|YIFY)",
+        "[\\.\\-\\s]+(?=\\.(mkv|mp4|avi|flv)$)"
     ]
 }
 ```
 
-## Every Option Explained
+### Options
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `personal_tmdb_token` | string | `""` | Personal TMDb Bearer token. |
+| `personal_tmdb_token` | string | `""` | Your TMDb Bearer token. |
 | `tmdb_id` | string | `""` | Global TMDb ID override. |
 | `customText` | string | `""` | Custom Discord `details` text. |
 | `customBigText` | string | `""` | Overrides large image tooltip text. |
-| `autoPoster` | bool | `true` | Enables TMDb poster/show metadata and the normal show title display path. |
-| `autoEpisode` | bool | `true` | Enables TMDb episode title fetching. |
-| `autoDate` | bool | `true` | Enables release date display from TMDb/local metadata. |
-| `cleanFilename` | bool | `true` | Enables filename cleaning and `cleanRegex`. |
-| `romajiTitle` | bool | `false` | Enables the AniList anime title resolver and MAL link behavior when a Japanese anime is detected. |
-| `randomPoster` | bool | `true` | Random poster / slideshow selection. |
-| `slideshowInterval` | number | `0` | Slideshow interval in seconds. |
-| `dont` | string | `okay` | Just Don't. |
-| `customImage` | array | `[""]` | Custom image URLs used instead of the automatic poster. |
-| `cleanRegex` | array | *(see config)* | Extra filename-cleaning regex patterns. |
+| `autoPoster` | bool | `false` | Enables automatic TMDb poster and metadata handling. |
+| `autoEpisode` | bool | `false` | Fetches episode titles from TMDb. |
+| `autoDate` | bool | `false` | Shows release dates from TMDb or local metadata. |
+| `cleanFilename` | bool | `true` | Cleans filenames before searching. |
+| `romajiTitle` | bool | `false` | Enables AniList anime title resolution. |
+| `randomPoster` | bool | `false` | Randomizes poster or slideshow selection. |
+| `slideshowInterval` | number | `0` | Slideshow interval in seconds. `0` disables it. |
+| `dont` | string | `okay` | Internal option. |
+| `customImage` | array | `[""]` | Custom image URLs. |
+| `cleanRegex` | array | config | Extra filename-cleaning regex rules. |
 
----
+## Posters and Slideshow
 
-# ID Priority Order
+The script fetches and caches TMDb posters for each video.
 
-From highest to lowest:
+### Poster selection
 
-1. Folder metadata (`tmdb.txt` / `group.txt`)
-2. `config.json` (`tmdb_id`)
-3. Automatic filename search
+`randomPoster` controls which poster the script selects when a new video starts:
 
-FFprobe is not used as an ID source.
-
----
-
-# AutoPoster Pipeline
-
-```text
-New Media
-   │
-   ├─► Folder IDs
-   │      ├─► tmdb.txt
-   │      └─► group.txt
-   │
-   ├─► config.json
-   │      └─► tmdb_id
-   │
-   └─► Filename Search
-          │
-          ├─► Title + year
-          ├─► Title only
-          ├─► TV ↔ Movie fallback
-          ├─► Remove season marker
-          └─► Remove trailing number / Roman numeral
-                    │
-                    ▼
-                TMDb result
-                    │
-                    ▼
-                Local cache
+```json
+"randomPoster": true
 ```
 
----
+Selects a random poster.
 
-# Anime Title Resolution Pipeline
-
-When `romajiTitle` is enabled and the media is Japanese anime:
-
-```text
-TMDb result
-    │
-    ├─► Parent / show title
-    ├─► TMDb season
-    └─► First episode air_date
-             │
-             ▼
-       AniList search
-             │
-             ├─► Candidate list
-             ├─► Start date matching
-             └─► Format matching
-                    │
-                    ▼
-            Matching AniList entry
-                    │
-                    ├─► AniList title
-                    └─► MAL ID
-                    │
-                    ▼
-             Discord Rich Presence
+```json
+"randomPoster": false
 ```
 
-### Important
+Uses the first poster in the cached list.
 
-The AniList resolver does **not** assume that TMDb Season 1 corresponds to an AniList "Season 1".
+This also works when the slideshow is disabled. `randomPoster` does **not** enable or disable the slideshow.
 
-Instead, it identifies the correct AniList entry by comparing the TMDb season's premiere date against AniList candidate `startDate` values, while using the AniList media format to avoid unrelated OVA/Special entries.
+### Slideshow
 
-This is what allows one TMDb parent series to resolve to differently named AniList entries, for example:
+`slideshowInterval` controls how often the current image changes. The value is in **seconds**.
 
-```text
-TMDb: Monogatari Series — Season 1
-→ AniList: Bakemonogatari
-
-TMDb: Monogatari Series — Season 2
-→ AniList: Nisemonogatari
+```json
+"slideshowInterval": 10
 ```
 
----
+Changes the image every 10 seconds.
 
-# Rich Presence Layout
+Set it to `0` to disable the slideshow:
 
-## Playing State
+```json
+"slideshowInterval": 0
+```
+
+When the slideshow is disabled and `randomPoster` is true, the poster still changes when you play a different video.
+
+### Custom images
+
+You can use your own image URLs instead of TMDb posters:
+
+```json
+"customImage": [
+    "https://example.com/image1.png",
+    "https://example.com/image2.png"
+]
+```
+
+With multiple custom images, the same `randomPoster` setting controls random or sequential rotation.
+
+For Japanese anime with `romajiTitle` enabled, the script can also include Japanese-language TMDb posters in the cached poster list.
+
+## Movie Display
+
+When a movie has a TMDb tagline and `customBigText` is empty, the RPC uses:
+
+```text
+Large image text: tagline
+Small image text: release date
+```
+
+Example:
+
+```text
+Large: One. Last. Ride.
+Small: (Jun 25, 2026)
+```
+
+Without a tagline, the release date stays in the large image text.
+
+## Live Reload
+
+The script watches `config.json` and the metadata files in the current video's folder.
+
+It watches:
+
+```text
+tmdb.txt
+group.txt
+titles.txt
+titles_sX.txt
+mal.txt
+```
+
+Save a change and the script reloads it while the video keeps playing or remains paused.
+
+Display settings such as custom text, custom images, slideshow interval, and random poster selection can change without rebuilding cached API data.
+
+Settings that change metadata lookup can trigger a fresh lookup.
+
+## Cache
+
+The script stores fetched metadata in:
+
+```text
+rpc_cache.json
+```
+
+It keeps the file next to the video when possible. If the video folder is not writable, it uses the project folder.
+
+Cached data lets the script reuse previous TMDb and AniList results when display settings change.
+
+## Discord Connection
+
+`index.js` reconnects to Discord when the Discord client disconnects.
+
+The script keeps trying until Discord becomes available again.
+
+## Rich Presence
+
+### Playing
 
 | Field | Source |
 |---|---|
 | `name` | Resolved show title |
-| `details` | Config custom text / show title / filename according to normal payload rules |
-| `state` | Local episode title → TMDb episode title → filename |
-| `largeImageKey` | Custom image → TMDb poster → default MPC image |
-| `largeImageText` | Custom big text → tagline/date for movies → episode/date fallback |
-| `detailsUrl` | TMDb URL normally, or MAL URL when `romajiTitle` successfully resolves an AniList entry |
+| `details` | Custom text, show title, or filename |
+| `state` | Local episode title, TMDb title, or filename |
+| `largeImageKey` | Custom image, TMDb poster, or default MPC image |
+| `largeImageText` | Custom text, movie tagline/date, or episode/date |
+| `detailsUrl` | TMDb URL, or MAL URL after AniList resolution |
 
-## Paused State
+### Paused
 
-The presence continues to refresh approximately every 5 seconds, allowing slideshow rotation, configuration changes, and metadata changes to be reflected while paused.
+The presence refreshes about every 5 seconds while paused. This keeps slideshow changes, config changes, and folder metadata changes visible.
 
-## Idle / Stopped
+### Idle
 
-Shows an idle state with the default MPC-HC/BE/QT image.
+When MPC stops playing, the RPC switches to an idle state with the default MPC image.
 
----
+## Troubleshooting
 
-# FAQ
+### Wrong poster or show
 
-**Does it work without a TMDb account?**\
-Yes. A shared built-in token is included. You only need your own token if you hit rate limits or want private access.
+Check the terminal log for the selected TMDb ID and search path.
 
-**Does it work with other media player?**\
-Nope. Only works with Media Player Classic.
+You can force the correct media with:
 
-**Does this work for anime?**\
-Yes. TMDb remains the main metadata source. When `romajiTitle` is enabled and the media is Japanese anime, AniList is used to identify the specific anime entry and provide the season-specific title plus MAL ID.
+```text
+tmdb.txt
+```
 
-**Why not simply search AniList and take the first result?**\
-Because franchises can contain many separate AniList entries. A TMDb parent such as `Monogatari Series` can map to entries such as `Bakemonogatari` and `Nisemonogatari`. The TMDb season premiere date is used to determine which AniList entry represents the season currently being played.
+Remove the relevant `rpc_cache.json` when you need a fresh lookup.
 
-**Does AniList replace TMDb?**\
-No. TMDb remains the primary source for posters, episode metadata, release dates, and the main media lookup. AniList is used as the anime title/link resolver when `romajiTitle` is enabled.
+### Wrong anime title
 
-**What happens if AniList lookup fails?**\
-The Rich Presence continues using the existing fallback title path. AniList failure should not break normal TMDb playback information.
+Check the AniList resolution details in the terminal log.
 
-**Does changing `romajiTitle` require a complete refetch?**\
-Not necessarily. Cached TMDb metadata and AniList information are reused when available. Older cache entries can be hydrated with AniList data when needed.
+The resolver uses the TMDb season premiere date, AniList `startDate`, media format, and Japanese-language check.
 
-**Can this be used for western cartoons?**\
-Yes. AniList lookup is skipped for media whose original TMDb language is not Japanese, even when `romajiTitle` is enabled.
+For franchises with many separate entries, use `mal.txt`.
 
-**What is `mal.txt` used for?**\
-Put the MAL ID of the anime entry in the same folder as the videos. When `romajiTitle` is enabled, that ID is used as the absolute AniList resolver instead of relying on filename/date matching.
+### Episode title does not appear
 
-**Does the cache reset whenever I change settings?**\
-Only settings that affect metadata resolution need to invalidate metadata state. Display-only changes are designed to be applied without throwing away reusable cached API data.
+Check these items:
 
-**What is `dont`?**\
-Don't ask
-
----
-
-# Troubleshooting
-
-### Wrong poster or wrong show
-
-- Check the terminal log to see which TMDb ID or search path was used.
-- Add a `tmdb.txt` file with the correct TMDb ID.
-- Remove the relevant `rpc_cache.json` if a completely fresh lookup is required.
-
-### Wrong anime title with `romajiTitle`
-
-Check the terminal log for the AniList resolution path.
-
-The important matching inputs are:
-
-- TMDb season premiere date
-- AniList `startDate`
-- AniList media format
-- Japanese-language guard
-
-For difficult franchise structures such as Monogatari, verify that the TMDb season has the expected first-episode air date.
-
-### Episode titles not showing
-
-Make sure:
-
-- `autoEpisode` is enabled for TMDb episode fetching
-- `titles.txt` uses `episode_number|title|release_date`
+- `autoEpisode` is enabled for TMDb titles
+- the local file uses `episode_number|title|release_date`
 - only one titles file exists in the folder
-- the filename contains a recognizable episode number
+- the filename contains an episode number when the script needs to parse it
 
-### MPC-HC not detected
+### MPC is not detected
 
-Enable the Web Interface and make sure the configured port matches the script (default `13579`).
+Enable the Web Interface and check the port.
 
-### FFprobe timeout
+Default:
 
-Make sure `ffprobe` is installed and in `PATH`.
+```text
+13579
+```
 
-The timeout is non-fatal; the script can fall back to filename parsing.
+### FFprobe fails
+
+Run:
+
+```bash
+ffprobe -version
+```
+
+Make sure FFprobe is installed and available in `PATH`.
+
+A timeout does not stop playback detection. The script falls back to filename parsing.
 
 ### View live logs
 
@@ -802,15 +611,13 @@ The timeout is non-fatal; the script can fall back to filename parsing.
 npx pm2 logs index
 ```
 
-Or use the CLI menu.
+You can also open the logs from the menu.
 
----
+## Credits
 
-# Credits
+Created with AI assistance through testing and prompting by [butterbot6283](https://github.com/butterbot6283).
 
-Script created with AI assistance through testing and prompting by [butterbot6283](https://github.com/butterbot6283).
-
-Libraries / services:
+Libraries and services:
 
 - [@xhayper/discord-rpc](https://github.com/xhayper/discord-rpc)
 - [axios](https://axios-http.com/)
@@ -819,8 +626,6 @@ Libraries / services:
 - [TMDb API](https://developer.themoviedb.org/)
 - [AniList GraphQL API](https://anilist.gitbook.io/anilist-apiv2-docs/)
 
----
+## License
 
-# License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

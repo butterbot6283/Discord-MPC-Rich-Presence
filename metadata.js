@@ -14,6 +14,57 @@ const {
 
 const POSTER_CACHE_VERSION = 2;
 
+const extractTmdbIdFromUrl = (tmdbUrl) => {
+    const match = typeof tmdbUrl === 'string' && tmdbUrl.match(/\/(?:tv|movie)\/(\d+)/i);
+    return match ? match[1] : null;
+};
+
+// Prefer IDs explicitly recorded by this version, but recover the TMDb ID
+// from tmdbUrl for older cache entries so they can be migrated to the same
+// canonical layout on their next use.
+const fetchCachedIds = (videoDir, cleanedName) => {
+    if (!videoDir || !cleanedName) return { tmdbID: null, groupID: null, malID: null };
+
+    try {
+        const rawTitle = cleanedName.replace(/\.+[a-zA-Z0-9]+$/, '');
+        let cleanTitle = rawTitle.replace(/\[.*?\]/g, '');
+        const yearMatch = cleanTitle.match(/\b(19\d{2}|20\d{2})\b/);
+        if (yearMatch) cleanTitle = cleanTitle.substring(0, yearMatch.index).trim();
+        cleanTitle = cleanTitle
+            .replace(/[_\-\s]+(?:S\d+E\d+|Season|Book|Part|Episode|Ep|E)\s*\d+.*/i, '')
+            .replace(/[_\-\s]*[_\-]+[_\-\d\s]+$/, '')
+            .replace(/S\d+E\d+.*/i, '')
+            .replace(/(?:Season|Book|Part|Episode|Ep)\s*\d+.*/i, '')
+            .replace(/\bE\d{1,4}\b.*/i, '')
+            .replace(/\b(BD|DVD|HD|Dub Indonesia|Dubbed|Dub|Sub|Raw|OVA|ONA|NC|Creditless)\b/gi, '')
+            .replace(/[\._\-\(\)\[\]]/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        const folderCache = path.join(videoDir, 'rpc_cache.json');
+        const fallbackCache = path.join(__dirname, 'rpc_cache.json');
+        // Reading a folder cache must not depend on write permission. This is
+        // important for mounted/removable drives where an existing cache is
+        // readable even though Node reports the directory as non-writable.
+        const cachePath = fs.existsSync(folderCache) ? folderCache : fallbackCache;
+        if (!fs.existsSync(cachePath)) return { tmdbID: null, groupID: null, malID: null };
+
+        const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+        const entry = Object.values(cacheData).find(item =>
+            item && item.debugInfo?.cleanTitle === cleanTitle &&
+            (item.idtmdb || extractTmdbIdFromUrl(item.tmdbUrl))
+        );
+        if (!entry) return { tmdbID: null, groupID: null, malID: null };
+
+        return {
+            tmdbID: entry.idtmdb || extractTmdbIdFromUrl(entry.tmdbUrl),
+            groupID: entry.group || null,
+            malID: entry.idmal || null
+        };
+    } catch (_) {
+        return { tmdbID: null, groupID: null, malID: null };
+    }
+};
+
 const mergeUniquePosters = (...lists) => {
     const seen = new Set();
     const merged = [];
@@ -220,9 +271,54 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
     } catch(e) {}
 
     const currentConfigState = `${config.dont}-GRP:${!!groupID}-TVFILE:${forcedTvBySeasonFile}`;
-    const cacheKey = tmdbID || config.tmdb_id || cleanTitleForSearch;
+    // The human-readable clean title is the persistent cache key. idtmdb is
+    // stored inside the entry and remains the authoritative metadata ID.
+    let cacheKey = cleanTitleForSearch;
     const targetSeason = season !== null ? season : 1;
     const epKey = groupID ? `GROUP_S${targetSeason}E${episode}` : `S${targetSeason}E${episode}`;
+
+    // Migrate the short-lived numeric-key layout back to the readable title
+    // key. Keep data only when both entries point to the same TMDb result.
+    const legacyIdKey = Object.keys(cacheData).find(key => {
+        const entry = cacheData[key];
+        return key !== cacheKey && entry &&
+            entry.debugInfo?.cleanTitle === cleanTitleForSearch;
+    });
+    if (legacyIdKey) {
+        const legacy = cacheData[legacyIdKey];
+        const legacyTmdbId = legacy.idtmdb || extractTmdbIdFromUrl(legacy.tmdbUrl);
+        const current = cacheData[cacheKey];
+        const currentTmdbId = current?.idtmdb || extractTmdbIdFromUrl(current?.tmdbUrl);
+        if (!current) {
+            cacheData[cacheKey] = legacy;
+        } else if (String(legacyTmdbId || '') === String(currentTmdbId || '')) {
+            current.episodes = { ...(legacy.episodes || {}), ...(current.episodes || {}) };
+            current.seasonTitles = { ...(legacy.seasonTitles || {}), ...(current.seasonTitles || {}) };
+            if (!current.idmal && legacy.idmal) current.idmal = legacy.idmal;
+            if (!current.group && legacy.group) current.group = legacy.group;
+        }
+        delete cacheData[legacyIdKey];
+        try { fs.writeFileSync(targetCachePath, JSON.stringify(cacheData, null, 4)); } catch (_) {}
+    }
+
+    const ensureCachedIdFields = (seriesData, seasonNum) => {
+        if (!seriesData) return false;
+        let changed = false;
+        if (!Object.hasOwn(seriesData, 'idtmdb')) {
+            seriesData.idtmdb = extractTmdbIdFromUrl(seriesData.tmdbUrl);
+            changed = true;
+        }
+        if (!Object.hasOwn(seriesData, 'idmal')) {
+            seriesData.idmal = seriesData.seasonTitles?.[seasonNum]?.idMal || null;
+            changed = true;
+        }
+        if (!Object.hasOwn(seriesData, 'group')) {
+            // Old cache files did not record whether their group request worked.
+            seriesData.group = null;
+            changed = true;
+        }
+        return changed;
+    };
 
     // titles_sX.txt has two roles:
     // 1) force TV + the season number from its filename;
@@ -289,8 +385,11 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
         }
     };
 
-    if (cacheData[cacheKey] && cacheData[cacheKey].configState === currentConfigState && cacheData[cacheKey].posterCacheVersion === POSTER_CACHE_VERSION) {
+    const cachedTmdbId = cacheData[cacheKey]?.idtmdb || extractTmdbIdFromUrl(cacheData[cacheKey]?.tmdbUrl);
+    const cacheMatchesRequestedTmdbId = !tmdbID || String(cachedTmdbId || '') === String(tmdbID);
+    if (cacheData[cacheKey] && cacheMatchesRequestedTmdbId && cacheData[cacheKey].configState === currentConfigState && cacheData[cacheKey].posterCacheVersion === POSTER_CACHE_VERSION) {
         const seriesData = cacheData[cacheKey];
+        let cacheIdsChanged = ensureCachedIdFields(seriesData, targetSeason);
 
         // =========================================================
         // AUTO-HYDRATION: Tarik AniList Jika Romaji ON Tapi Cache Kosong
@@ -306,6 +405,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                     source: 'mal.txt'
                 };
                 seasonOverride = seriesData.seasonTitles[targetSeason];
+                seriesData.idmal = malResult.idMal || null;
                 try { fs.writeFileSync(targetCachePath, JSON.stringify(cacheData, null, 4)); } catch (e) {}
             }
         }
@@ -334,6 +434,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                     source: 'anilist',
                     matchMode: matchMode || 'date-exact'
                 };
+                seriesData.idmal = idMal || null;
 
                 try { fs.writeFileSync(targetCachePath, JSON.stringify(cacheData, null, 4)); } catch (e) {}
             }
@@ -342,6 +443,9 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
         let epData = resolveCachedEpisode(seriesData);
         if (epData) {
             migrateEpisodeKeyToCanonical(seriesData, epData);
+            cacheIdsChanged = true;
+        }
+        if (cacheIdsChanged) {
             try { fs.writeFileSync(targetCachePath, JSON.stringify(cacheData, null, 4)); } catch (e) {}
         }
 
@@ -372,6 +476,41 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
 
     const saveCacheAndReturn = (result) => {
         if (!result.retry) {
+            const resolvedTmdbId = result.idtmdb || extractTmdbIdFromUrl(result.tmdbUrl);
+            if (resolvedTmdbId) {
+                const titleKey = cleanTitleForSearch;
+
+                // Remove old numeric entries for this title. Compatible data
+                // can be retained; a different ID is intentionally discarded.
+                for (const key of Object.keys(cacheData)) {
+                    if (key === titleKey) continue;
+                    const entry = cacheData[key];
+                    if (!entry || entry.debugInfo?.cleanTitle !== cleanTitleForSearch) continue;
+
+                    const entryTmdbId = entry.idtmdb || extractTmdbIdFromUrl(entry.tmdbUrl);
+                    if (String(entryTmdbId || '') === String(resolvedTmdbId)) {
+                        if (!cacheData[titleKey]) {
+                            cacheData[titleKey] = entry;
+                        } else {
+                            const titleEntry = cacheData[titleKey];
+                            titleEntry.episodes = { ...(entry.episodes || {}), ...(titleEntry.episodes || {}) };
+                            titleEntry.seasonTitles = { ...(entry.seasonTitles || {}), ...(titleEntry.seasonTitles || {}) };
+                            if (!titleEntry.idmal && entry.idmal) titleEntry.idmal = entry.idmal;
+                            if (!titleEntry.group && entry.group) titleEntry.group = entry.group;
+                        }
+                    }
+                    delete cacheData[key];
+                }
+
+                // A new TMDb ID means all result-dependent fields (poster,
+                // episodes, URLs, and titles) must be rebuilt from that ID.
+                const existingId = cacheData[titleKey]?.idtmdb || extractTmdbIdFromUrl(cacheData[titleKey]?.tmdbUrl);
+                if (existingId && String(existingId) !== String(resolvedTmdbId)) {
+                    delete cacheData[titleKey];
+                }
+                cacheKey = titleKey;
+            }
+
             if (!cacheData[cacheKey] || cacheData[cacheKey].configState !== currentConfigState) {
                 cacheData[cacheKey] = {
                     configState: currentConfigState,
@@ -384,6 +523,9 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                     posters: result.postersEnglish || result.posters || [],
                     postersJa: result.postersJa || [],
                     tmdbUrl: result.tmdbUrl,
+                    idtmdb: result.idtmdb || extractTmdbIdFromUrl(result.tmdbUrl),
+                    idmal: result.idmal || null,
+                    group: result.group || null,
                     source: result.source.replace('[CACHE] ', ''),
                     debugInfo: result.debugInfo,
                     episodes: {},
@@ -402,6 +544,12 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                 if (result.mainReleaseDate) cacheData[cacheKey].mainReleaseDate = formatApiDate(result.mainReleaseDate) || cacheData[cacheKey].mainReleaseDate;
                 if (result.tmdbUrl) cacheData[cacheKey].tmdbUrl = result.tmdbUrl;
             }
+
+            // Record the IDs that resolved successfully for this cache entry.
+            // A failed or unused resolver is represented explicitly as null.
+            cacheData[cacheKey].idtmdb = result.idtmdb || extractTmdbIdFromUrl(result.tmdbUrl) || null;
+            cacheData[cacheKey].idmal = result.idmal || null;
+            cacheData[cacheKey].group = result.group || null;
 
             if (result.fetchedEpisodes) {
                 for (const [key, data] of Object.entries(result.fetchedEpisodes)) {
@@ -463,7 +611,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
             try {
                 await tmdbGet(`https://api.themoviedb.org/3/${primaryType}/${id}`, { headers: { Authorization: `Bearer ${API_TOKEN}` }, timeout: 5000 });
                 const details = await fetchTmdbDetails(id, primaryType, config, season, episode, groupID, malID, API_TOKEN, cleanTitleForSearch, debugInfo);
-                if (details) return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${primaryType}/${id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName, debugInfo });
+                if (details) return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${primaryType}/${id}`, idtmdb: id, idmal: details.anilistIdMal, group: details.usedGroupID, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName, debugInfo });
             } catch (e) {
                 const isNotFound = e.response && e.response.status === 404;
                 if (!isNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${primaryType}): ${e.code || e.message}`);
@@ -471,7 +619,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                     try {
                         await tmdbGet(`https://api.themoviedb.org/3/${fallbackType}/${id}`, { headers: { Authorization: `Bearer ${API_TOKEN}` }, timeout: 5000 });
                         const details = await fetchTmdbDetails(id, fallbackType, config, season, episode, groupID, malID, API_TOKEN, cleanTitleForSearch, debugInfo);
-                        if (details) return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName + ` (Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
+                        if (details) return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${fallbackType}/${id}`, idtmdb: id, idmal: details.anilistIdMal, group: details.usedGroupID, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceName + ` (Fallback to ${fallbackType.toUpperCase()})`, debugInfo });
                     } catch (err) {
                         const fallbackNotFound = err.response && err.response.status === 404;
                         if (!fallbackNotFound) debugInfo.apiErrors.push(`TMDb ID lookup (${fallbackType}): ${err.code || err.message}`);
@@ -563,7 +711,7 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
                     const details = await fetchTmdbDetails(media.id, usedType, config, season, episode, groupID, malID, API_TOKEN, cleanTitleForSearch, debugInfo);
                     if (details) {
                         const sourceMsg = forcedTvBySeasonFile ? `TMDb (AutoPoster - TV via titles_sX.txt)` : `TMDb (AutoPoster - ${usedType.toUpperCase()})`;
-                        return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${usedType}/${media.id}`, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceMsg, debugInfo });
+                        return saveCacheAndReturn({ posters: details.posters, postersEnglish: details.postersEnglish, postersJa: details.postersJa, originalLanguage: details.originalLanguage, showTitle: details.showTitle, romajiTitle: details.romajiTitle, anilistTitle: details.anilistTitle, anilistIdMal: details.anilistIdMal, anilistMatchMode: details.anilistMatchMode, fetchedEpisodes: details.fetchedEpisodes, tmdbUrl: `https://www.themoviedb.org/${usedType}/${media.id}`, idtmdb: media.id, idmal: details.anilistIdMal, group: details.usedGroupID, tagline: details.tagline, mainReleaseDate: details.mainReleaseDate, retry: false, source: sourceMsg, debugInfo });
                     }
                 }
             } catch(err) {
@@ -578,4 +726,4 @@ const fetchMetadata = async (tmdbID, groupID, malID, actualFilePath, cleanedName
     }
 };
 
-module.exports = { fetchMetadata, fetchTitles, fetchIdsFromTxt };
+module.exports = { fetchMetadata, fetchTitles, fetchIdsFromTxt, fetchCachedIds };

@@ -171,6 +171,9 @@ const fetchTmdbDetails = async (id, type, config, season, episode, groupID, malI
         // TMDb SEASON PRE-LOAD
         // =========================================================
         let fetchedEpisodes = {};
+        // Keep this separate from the requested ID: a group only counts as
+        // "used" after TMDb accepts it and supplies the requested group.
+        let usedGroupID = null;
 
         if (type === 'tv') {
             try {
@@ -180,6 +183,7 @@ const fetchTmdbDetails = async (id, type, config, season, episode, groupID, malI
                     const targetGroup = groupRes.data.groups.find(g => g.order === targetSeason) || groupRes.data.groups[targetSeason - 1];
 
                     if (targetGroup) {
+                        usedGroupID = groupID;
                         if (targetGroup.episodes) {
                             targetGroup.episodes.forEach(ep => {
                                 const epNum = ep.order + 1;
@@ -297,6 +301,7 @@ const fetchTmdbDetails = async (id, type, config, season, episode, groupID, malI
             anilistTitle: anilistTitle,
             anilistIdMal: anilistIdMal,
             anilistMatchMode,
+            usedGroupID,
             fetchedEpisodes,
             tagline,
             mainReleaseDate

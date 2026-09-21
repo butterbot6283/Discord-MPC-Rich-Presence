@@ -3,7 +3,7 @@ const path = require('path');
 const util = require('util');
 const { execFile } = require('child_process');
 const execFilePromise = util.promisify(execFile);
-const { fetchIdsFromTxt } = require('./metadata');
+const { fetchIdsFromTxt, fetchCachedIds } = require('./metadata');
 const { cleanName } = require('./utils');
 
 let lastFilePath = null;
@@ -90,7 +90,7 @@ const getMpcStatus = async (config) => {
         const filePath = filePathMatch ? decodeURIComponent(filePathMatch[1].trim()) : null;
 
         let ids = { tmdbID: null, groupID: null, malID: null };
-        let debugIds = { txt: { tmdb: null, group: null, mal: null }, config: { tmdb: config.tmdb_id } };
+        let debugIds = { txt: { tmdb: null, group: null, mal: null }, cache: { tmdb: null, group: null, mal: null }, config: { tmdb: config.tmdb_id } };
         let movieName = null;
         let isFallback = false;
 
@@ -117,10 +117,12 @@ const getMpcStatus = async (config) => {
 
             const videoDir = path.dirname(filePath);
             const txtIds = getTxtMetadata(videoDir);
-            if (txtIds.tmdbID) ids.tmdbID = txtIds.tmdbID;
-            ids.groupID = txtIds.groupID || null;
-            ids.malID = txtIds.malID || null;
+            const cacheIds = fetchCachedIds(videoDir, cleanedFileName);
+            ids.tmdbID = txtIds.tmdbID || cacheIds.tmdbID || null;
+            ids.groupID = txtIds.groupID || cacheIds.groupID || null;
+            ids.malID = txtIds.malID || cacheIds.malID || null;
             debugIds.txt = { tmdb: txtIds.tmdbID, group: txtIds.groupID, mal: txtIds.malID };
+            debugIds.cache = { tmdb: cacheIds.tmdbID, group: cacheIds.groupID, mal: cacheIds.malID };
 
             if (!ids.tmdbID) ids.tmdbID = config.tmdb_id?.trim() || null;
 

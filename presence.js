@@ -349,6 +349,7 @@ async function updatePresence(mpcStatus, setActivity) {
 
         if (isNewMedia) {
             const idSource = (mpcStatus.debugIds.txt.tmdb || mpcStatus.debugIds.txt.group || mpcStatus.debugIds.txt.mal) ? "Video Folder TXT" :
+            (mpcStatus.debugIds.cache?.tmdb || mpcStatus.debugIds.cache?.group || mpcStatus.debugIds.cache?.mal) ? "rpc_cache.json" :
             (config.tmdb_id) ? "config.json (Manual Override)" :
             (cachedPosterSource && cachedPosterSource.includes('AutoPoster')) ? "Auto (Filename Search)" : "Not Found";
 
